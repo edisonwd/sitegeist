@@ -1,7 +1,7 @@
-import type { Attachment, MessageRenderer } from "@mariozechner/pi-web-ui";
-import { registerMessageRenderer, type UserMessageWithAttachments } from "@mariozechner/pi-web-ui";
 import { html, LitElement } from "lit";
 import { customElement, property } from "lit/decorators.js";
+import type { Attachment, MessageRenderer } from "../web-ui/index.js";
+import { registerMessageRenderer, type UserMessageWithAttachments } from "../web-ui/index.js";
 
 /**
  * Custom user message component for Sitegeist with fancy pill styling.

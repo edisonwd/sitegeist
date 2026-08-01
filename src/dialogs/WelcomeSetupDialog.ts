@@ -1,7 +1,9 @@
+import { i18n } from "@mariozechner/mini-lit";
 import { Button } from "@mariozechner/mini-lit/dist/Button.js";
 import { DialogContent, DialogHeader } from "@mariozechner/mini-lit/dist/Dialog.js";
 import { DialogBase } from "@mariozechner/mini-lit/dist/DialogBase.js";
 import { html } from "lit";
+import "../utils/i18n-extension.js";
 
 /**
  * Shown on first launch when no API keys are configured.
@@ -32,18 +34,16 @@ export class WelcomeSetupDialog extends DialogBase {
 				className: "flex flex-col gap-4",
 				children: html`
 					${DialogHeader({
-						title: "Welcome to Sitegeist",
+						title: i18n("Welcome to Sitegeist"),
 					})}
 					<p class="text-sm text-foreground">
-						To get started, you need to connect at least one AI provider.
-						You can either log in with an existing subscription (Anthropic, OpenAI, or GitHub Copilot)
-						or enter an API key.
+	${i18n("To get started, you need to connect at least one AI provider. You can either log in with an existing subscription (Anthropic, OpenAI, or GitHub Copilot) or enter an API key.")}
 					</p>
 					<div class="flex justify-end">
 						${Button({
 							variant: "default",
 							onClick: () => this.close(),
-							children: "Set up provider",
+							children: i18n("Set up provider"),
 						})}
 					</div>
 				`,

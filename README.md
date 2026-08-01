@@ -16,56 +16,76 @@ Requires Chrome 141+ or Edge equivalent.
 
 ## Development
 
-Clone this repo plus its sibling dependencies into the same parent directory:
-
-```
-parent/
-  mini-lit/          # https://github.com/badlogic/mini-lit
-  pi-mono/           # https://github.com/badlogic/pi-mono
-  sitegeist/         # this repo
-```
-
-Install dependencies in each repo:
+Clone this repository and install dependencies:
 
 ```bash
-(cd ../mini-lit && npm install)
-(cd ../pi-mono && npm install)
+git clone <this-repo>
+cd sitegeist
 npm install
 ```
 
 `npm install` sets up the Husky pre-commit hook automatically.
 
-Start all dev watchers (mini-lit, pi-mono, sitegeist extension, marketing site):
+Start all dev watchers (extension and marketing site):
 
 ```bash
 ./dev.sh
 ```
 
-Changes in `../mini-lit` or `../pi-mono` are rebuilt automatically and picked up by the sitegeist watcher.
+The dev watcher automatically rebuilds the extension on file changes. No manual rebuilding of dependencies needed - all dependencies are now npm packages.
 
-To run only the extension watcher without dependencies or the marketing site:
+To run only the extension watcher without the marketing site:
 
 ```bash
 npm run dev
 ```
 
-### Loading the extension
+### Loading the extension in Chrome
 
-1. Open `chrome://extensions/` or `edge://extensions/`
-2. Enable Developer mode
-3. Click Load unpacked
-4. Select `sitegeist/dist-chrome/`
-5. Click "Details" on the Sitegeist extension and enable:
+1. Build the extension:
+
+   ```bash
+   npm run build
+   ```
+
+   The build output is written to `dist-chrome/`.
+
+2. Open Chrome, navigate to `chrome://extensions/`
+3. Enable **Developer mode** (top-right toggle)
+4. Click **Load unpacked**
+5. Select the `sitegeist/dist-chrome/` directory
+6. Click **Details** on the Sitegeist extension card and enable:
    - **Allow user scripts**
    - **Allow access to file URLs**
 
-The extension hot-reloads when the dev watcher rebuilds.
+### Reloading after code changes
+
+If `./dev.sh` is running, the dev watcher rebuilds automatically on file save. After the rebuild completes, go to `chrome://extensions/` and click the refresh icon on the Sitegeist extension card. No need to remove and re-add it.
+
+For a one-off build without the dev watcher:
+
+```bash
+npm run build
+```
+
+Then click the refresh icon on the extension card as above.
 
 ### First run
 
 On first launch, Sitegeist prompts you to connect at least one AI provider. You can log in with a subscription or enter an API key.
 
 Some subscription logins require the CORS proxy (configurable in Settings > Proxy). The default proxy is `https://proxy.mariozechner.at/proxy`.
+
+### Custom model providers
+
+Sitegeist supports custom OpenAI-compatible providers (Ollama, llama.cpp, vLLM, LM Studio, or any OpenAI-compatible endpoint):
+
+1. Go to Settings > Custom Model Providers
+2. Click "Add Provider" and select your provider type
+3. Configure the base URL and API key (if required)
+4. For manual providers, add your models individually
+
+Custom providers don't require API keys for local endpoints (e.g., Ollama at `http://localhost:11434`). The extension automatically handles compatibility with different OpenAI-compatible APIs.
 
 ## Checks
 

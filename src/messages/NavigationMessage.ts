@@ -1,11 +1,11 @@
-import type { MessageRenderer } from "@mariozechner/pi-web-ui";
-import { registerMessageRenderer } from "@mariozechner/pi-web-ui";
 import { html, LitElement, type TemplateResult } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { SkillPill } from "../components/SkillPill.js";
 import { getSitegeistStorage } from "../storage/app-storage.js";
 import type { Skill } from "../storage/stores/skills-store.js";
 import { formatSkills } from "../utils/format-skills.js";
+import type { MessageRenderer } from "../web-ui/index.js";
+import { registerMessageRenderer } from "../web-ui/index.js";
 
 // ============================================================================
 // NAVIGATION MESSAGE TYPE
@@ -21,7 +21,7 @@ export interface NavigationMessage {
 }
 
 // Extend CustomAgentMessages interface via declaration merging
-declare module "@mariozechner/pi-agent-core" {
+declare module "@earendil-works/pi-agent-core" {
 	interface CustomAgentMessages {
 		navigation: NavigationMessage;
 	}

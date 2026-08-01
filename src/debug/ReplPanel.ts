@@ -1,9 +1,9 @@
 import { Button } from "@mariozechner/mini-lit/dist/Button.js";
 import { icon } from "@mariozechner/mini-lit/dist/icons.js";
-import { ArtifactsPanel, ArtifactsRuntimeProvider, createJavaScriptReplTool } from "@mariozechner/pi-web-ui";
 import { html, LitElement } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { Play, Square } from "lucide";
+import { ArtifactsPanel, ArtifactsRuntimeProvider, createJavaScriptReplTool } from "../web-ui/index.js";
 
 @customElement("repl-panel")
 export class ReplPanel extends LitElement {

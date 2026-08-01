@@ -1,5 +1,5 @@
-import type { SandboxRuntimeProvider } from "@mariozechner/pi-web-ui";
-import { RUNTIME_MESSAGE_ROUTER, RuntimeMessageBridge } from "@mariozechner/pi-web-ui";
+import type { SandboxRuntimeProvider } from "../../web-ui/index.js";
+import { RUNTIME_MESSAGE_ROUTER, RuntimeMessageBridge } from "../../web-ui/index.js";
 
 export interface UserScriptsCheckResult {
 	available: boolean;

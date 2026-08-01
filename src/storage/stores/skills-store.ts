@@ -1,5 +1,5 @@
-import { Store, type StoreConfig } from "@mariozechner/pi-web-ui";
 import { minimatch } from "minimatch";
+import { Store, type StoreConfig } from "../../web-ui/index.js";
 
 export interface Skill {
 	name: string;

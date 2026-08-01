@@ -1,11 +1,13 @@
+import { i18n } from "@mariozechner/mini-lit";
 import { Button } from "@mariozechner/mini-lit/dist/Button.js";
 import { Input } from "@mariozechner/mini-lit/dist/Input.js";
-import { SettingsTab } from "@mariozechner/pi-web-ui";
 import { html } from "lit";
 import { Toast } from "../components/Toast.js";
 import { getSitegeistStorage } from "../storage/app-storage.js";
 import type { Skill } from "../storage/stores/skills-store.js";
 import { getFaviconUrl } from "../utils/favicon.js";
+import { SettingsTab } from "../web-ui/index.js";
+import "../utils/i18n-extension.js";
 
 export class SkillsTab extends SettingsTab {
 	label = "Skills";
@@ -17,7 +19,7 @@ export class SkillsTab extends SettingsTab {
 	private importedSkills: Skill[] = [];
 
 	getTabName(): string {
-		return this.label;
+		return i18n("Skills");
 	}
 
 	async connectedCallback() {
@@ -54,7 +56,7 @@ export class SkillsTab extends SettingsTab {
 	}
 
 	async deleteSkill(skill: Skill) {
-		if (!confirm(`Delete skill "${skill.name}"?`)) return;
+		if (!confirm(i18n('Delete skill "{name}"?').replace("{name}", skill.name))) return;
 
 		const storage = getSitegeistStorage();
 		await storage.skills.delete(skill.name);
@@ -122,7 +124,7 @@ export class SkillsTab extends SettingsTab {
 				const imported = JSON.parse(text) as Skill[];
 
 				if (!Array.isArray(imported)) {
-					Toast.error("Invalid skills file: expected an array of skills");
+					Toast.error(i18n("Invalid skills file: expected an array of skills"));
 					return;
 				}
 
@@ -149,7 +151,7 @@ export class SkillsTab extends SettingsTab {
 					await this.performImport(imported);
 				}
 			} catch (error) {
-				Toast.error(`Failed to import skills: ${(error as Error).message}`);
+				Toast.error(`${i18n("Failed to import skills:")} ${(error as Error).message}`);
 			}
 		};
 		input.click();
@@ -170,7 +172,7 @@ export class SkillsTab extends SettingsTab {
 
 		this.importConflicts = [];
 		await this.loadSkills();
-		Toast.success(`Imported ${imported} skill(s)`);
+		Toast.success(i18n("Imported {count} skill(s)").replace("{count}", imported.toString()));
 	}
 
 	toggleConflictSelection(index: number) {
@@ -200,13 +202,13 @@ export class SkillsTab extends SettingsTab {
 								variant: "outline",
 								size: "sm",
 								onClick: () => this.editSkill(skill),
-								children: "Edit",
+								children: i18n("Edit"),
 							})}
 							${Button({
 								variant: "destructive",
 								size: "sm",
 								onClick: () => this.deleteSkill(skill),
-								children: "Delete",
+								children: i18n("Delete"),
 							})}
 						</div>
 					</div>
@@ -218,17 +220,17 @@ export class SkillsTab extends SettingsTab {
 	renderSkillEditor(skill: Skill) {
 		return html`
 			<div class="border border-border rounded-lg p-4 bg-card space-y-4">
-				<h3 class="font-semibold text-foreground">Edit Skill: ${skill.name}</h3>
+				<h3 class="font-semibold text-foreground">${i18n("Edit Skill:")} ${skill.name}</h3>
 
 				${Input({
-					label: "Name (cannot be changed)",
+					label: i18n("Name (cannot be changed)"),
 					type: "text",
 					value: skill.name,
 					disabled: true,
 				})}
 
 				${Input({
-					label: "Domain Patterns (comma-separated)",
+					label: i18n("Domain Patterns (comma-separated)"),
 					type: "text",
 					value: skill.domainPatterns.join(", "),
 					onInput: (e) => {
@@ -242,14 +244,14 @@ export class SkillsTab extends SettingsTab {
 				})}
 
 				${Input({
-					label: "Short Description",
+					label: i18n("Short Description"),
 					type: "text",
 					value: skill.shortDescription,
 					onInput: (e) => this.updateEditField("shortDescription", (e.target as HTMLInputElement).value),
 				})}
 
 				<div class="space-y-2">
-					<label class="text-sm font-medium text-foreground">Description (Markdown)</label>
+					<label class="text-sm font-medium text-foreground">${i18n("Description (Markdown)")}</label>
 					<textarea
 						class="w-full min-h-[100px] px-3 py-2 text-sm text-foreground bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
 						.value=${skill.description}
@@ -258,7 +260,7 @@ export class SkillsTab extends SettingsTab {
 				</div>
 
 				<div class="space-y-2">
-					<label class="text-sm font-medium text-foreground">Examples (JavaScript)</label>
+					<label class="text-sm font-medium text-foreground">${i18n("Examples (JavaScript)")}</label>
 					<textarea
 						class="w-full min-h-[100px] px-3 py-2 text-xs text-foreground bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring font-mono"
 						.value=${skill.examples}
@@ -267,7 +269,7 @@ export class SkillsTab extends SettingsTab {
 				</div>
 
 				<div class="space-y-2">
-					<label class="text-sm font-medium text-foreground">Library Code</label>
+					<label class="text-sm font-medium text-foreground">${i18n("Library Code")}</label>
 					<textarea
 						class="w-full min-h-[200px] px-3 py-2 text-xs text-foreground bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring font-mono"
 						.value=${skill.library}
@@ -279,12 +281,12 @@ export class SkillsTab extends SettingsTab {
 					${Button({
 						variant: "outline",
 						onClick: () => this.cancelEdit(),
-						children: "Cancel",
+						children: i18n("Cancel"),
 					})}
 					${Button({
 						variant: "default",
 						onClick: () => this.saveEdit(),
-						children: "Save",
+						children: i18n("Save"),
 					})}
 				</div>
 			</div>
@@ -294,9 +296,9 @@ export class SkillsTab extends SettingsTab {
 	renderConflictResolution() {
 		return html`
 			<div class="border border-border rounded-lg p-4 bg-card space-y-4">
-				<h3 class="font-semibold text-foreground">Import Conflicts</h3>
+				<h3 class="font-semibold text-foreground">${i18n("Import Conflicts")}</h3>
 				<p class="text-sm text-muted-foreground">
-					The following skills already exist. Check the skills you want to overwrite:
+					${i18n("The following skills already exist. Check the skills you want to overwrite:")}
 				</p>
 
 				<div class="space-y-2">
@@ -323,12 +325,12 @@ export class SkillsTab extends SettingsTab {
 					${Button({
 						variant: "outline",
 						onClick: () => this.cancelImport(),
-						children: "Cancel",
+						children: i18n("Cancel"),
 					})}
 					${Button({
 						variant: "default",
 						onClick: () => this.performImport(this.importedSkills),
-						children: "Import Selected",
+						children: i18n("Import Selected"),
 					})}
 				</div>
 			</div>
@@ -348,25 +350,25 @@ export class SkillsTab extends SettingsTab {
 		return html`
 			<div class="flex flex-col gap-6">
 				<p class="text-sm text-muted-foreground">
-					Manage site skills - reusable JavaScript libraries for domain-specific automation.
+					${i18n("Manage site skills - reusable JavaScript libraries for domain-specific automation.")}
 				</p>
 
 				<div class="flex gap-2">
 					${Button({
 						variant: "outline",
 						onClick: () => this.exportSkills(),
-						children: "Export Skills",
+						children: i18n("Export Skills"),
 					})}
 					${Button({
 						variant: "outline",
 						onClick: () => this.importSkills(),
-						children: "Import Skills",
+						children: i18n("Import Skills"),
 					})}
 				</div>
 
 				${Input({
 					type: "text",
-					placeholder: "Search skills by name, domain, or description...",
+					placeholder: i18n("Search skills by name, domain, or description..."),
 					value: this.searchQuery,
 					onInput: (e) => this.onSearchInput(e),
 				})}
@@ -374,7 +376,7 @@ export class SkillsTab extends SettingsTab {
 				${
 					this.filteredSkills.length === 0
 						? html`<div class="text-center text-muted-foreground py-8">
-							${this.searchQuery ? "No skills match your search" : "No skills created yet"}
+							${this.searchQuery ? i18n("No skills match your search") : i18n("No skills created yet")}
 						</div>`
 						: html`<div class="flex flex-col gap-3">
 							${this.filteredSkills.map((skill) =>

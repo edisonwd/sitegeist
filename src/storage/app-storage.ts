@@ -6,7 +6,7 @@ import {
 	ProviderKeysStore,
 	SessionsStore,
 	SettingsStore,
-} from "@mariozechner/pi-web-ui";
+} from "../web-ui/index.js";
 import { CostStore } from "./stores/cost-store.js";
 import { SitegeistSessionsStore } from "./stores/sessions-store.js";
 import { SkillsStore } from "./stores/skills-store.js";

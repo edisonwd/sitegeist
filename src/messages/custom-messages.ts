@@ -5,7 +5,7 @@ export interface ContinueMessage {
 }
 
 // Extend CustomAgentMessages interface via declaration merging
-declare module "@mariozechner/pi-agent-core" {
+declare module "@earendil-works/pi-agent-core" {
 	interface CustomAgentMessages {
 		navigation: NavigationMessage;
 		continue: ContinueMessage;

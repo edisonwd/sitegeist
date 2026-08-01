@@ -1,6 +1,6 @@
+import { getProviders } from "@earendil-works/pi-ai/compat";
+import { i18n } from "@mariozechner/mini-lit";
 import { Button } from "@mariozechner/mini-lit/dist/Button.js";
-import { getProviders } from "@mariozechner/pi-ai";
-import { getAppStorage, SettingsTab } from "@mariozechner/pi-web-ui";
 import { html, type TemplateResult } from "lit";
 import { Toast } from "../components/Toast.js";
 import {
@@ -11,6 +11,8 @@ import {
 	parseOAuthCredentials,
 	serializeOAuthCredentials,
 } from "../oauth/index.js";
+import { getAppStorage, SettingsTab } from "../web-ui/index.js";
+import "../utils/i18n-extension.js";
 
 const OAUTH_PROVIDERS: OAuthProviderId[] = ["anthropic", "openai-codex", "github-copilot", "google-gemini-cli"];
 
@@ -41,7 +43,7 @@ export class ApiKeysOAuthTab extends SettingsTab {
 	private deviceCode: string | null = null;
 
 	getTabName(): string {
-		return "API Keys & OAuth";
+		return i18n("API Keys & OAuth");
 	}
 
 	override async connectedCallback() {
@@ -84,11 +86,11 @@ export class ApiKeysOAuthTab extends SettingsTab {
 
 			this.oauthStatuses[provider] = "logged-in";
 			this.deviceCode = null;
-			Toast.success(`Logged in to ${getOAuthProviderName(provider)}`);
+			Toast.success(`${i18n("Connected")} ${getOAuthProviderName(provider)}`);
 		} catch (error) {
 			console.error(`OAuth login failed for ${provider}:`, error);
 			this.oauthStatuses[provider] = "error";
-			this.oauthErrors[provider] = error instanceof Error ? error.message : "Login failed";
+			this.oauthErrors[provider] = error instanceof Error ? error.message : i18n("Login failed");
 			this.deviceCode = null;
 		}
 		this.requestUpdate();
@@ -114,14 +116,14 @@ export class ApiKeysOAuthTab extends SettingsTab {
 					<div class="text-xs text-muted-foreground mt-1">
 						${
 							status === "logged-in"
-								? html`<span class="text-green-600 dark:text-green-400">Connected</span>`
+								? html`<span class="text-green-600 dark:text-green-400">${i18n("Connected")}</span>`
 								: status === "logging-in"
 									? this.deviceCode
-										? html`<span>Enter code: <strong class="text-foreground font-mono">${this.deviceCode}</strong></span>`
-										: html`<span>Logging in...</span>`
+										? html`<span>${i18n("Enter code:")} <strong class="text-foreground font-mono">${this.deviceCode}</strong></span>`
+										: html`<span>${i18n("Logging in...")}</span>`
 									: status === "error"
 										? html`<span class="text-destructive">${error}</span>`
-										: html`<span>Not connected</span>`
+										: html`<span>${i18n("Not connected")}</span>`
 						}
 					</div>
 				</div>
@@ -132,7 +134,7 @@ export class ApiKeysOAuthTab extends SettingsTab {
 									variant: "outline",
 									size: "sm",
 									onClick: () => this.handleLogout(provider),
-									children: "Logout",
+									children: i18n("Logout"),
 								})
 							: Button({
 									variant: "default",
@@ -140,7 +142,7 @@ export class ApiKeysOAuthTab extends SettingsTab {
 									disabled: status === "logging-in",
 									loading: status === "logging-in",
 									onClick: () => this.handleLogin(provider),
-									children: "Login",
+									children: i18n("Login"),
 								})
 					}
 				</div>
@@ -152,10 +154,9 @@ export class ApiKeysOAuthTab extends SettingsTab {
 		return html`
 			<div class="flex flex-col gap-4">
 				<div>
-					<h3 class="text-sm font-semibold text-foreground mb-2">Subscription Login</h3>
+					<h3 class="text-sm font-semibold text-foreground mb-2">${i18n("Subscription Login")}</h3>
 					<p class="text-sm text-muted-foreground mb-4">
-						Log in with your existing subscription. No API key needed.
-						Tokens are stored locally and refreshed automatically.
+						${i18n("Log in with your existing subscription. No API key needed. Tokens are stored locally and refreshed automatically.")}
 					</p>
 				</div>
 
@@ -172,9 +173,9 @@ export class ApiKeysOAuthTab extends SettingsTab {
 		return html`
 			<div class="flex flex-col gap-6">
 				<div>
-					<h3 class="text-sm font-semibold text-foreground mb-2">API Keys</h3>
+					<h3 class="text-sm font-semibold text-foreground mb-2">${i18n("API Keys")}</h3>
 					<p class="text-sm text-muted-foreground mb-4">
-						Enter API keys for cloud providers. Keys are stored locally in your browser.
+						${i18n("Enter API keys for cloud providers. Keys are stored locally in your browser.")}
 					</p>
 				</div>
 				<div class="flex flex-col gap-6">

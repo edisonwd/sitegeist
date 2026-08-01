@@ -1,7 +1,7 @@
 import { i18n } from "@mariozechner/mini-lit/dist/i18n.js";
-import { SettingsTab } from "@mariozechner/pi-web-ui";
 import { html, type TemplateResult } from "lit";
 import { customElement, state } from "lit/decorators.js";
+import { SettingsTab } from "../web-ui/index.js";
 import "../utils/i18n-extension.js";
 
 @customElement("about-tab")

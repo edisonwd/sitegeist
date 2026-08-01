@@ -15,9 +15,9 @@ If the user did not give you a concrete task, read README.md first.
 - Always ask before removing functionality or code that appears intentional
 
 ## Dependencies
-- `@mariozechner/mini-lit`, `@mariozechner/pi-ai`, `@mariozechner/pi-web-ui`, `@mariozechner/pi-agent-core` are linked via `file:` to sibling repos `../mini-lit` and `../pi-mono`
-- Changes to those packages require rebuilding them (the dev watcher handles this)
-- If you need to modify upstream code, edit it in `../pi-mono` or `../mini-lit` directly and rebuild
+- All dependencies are now npm packages: `@earendil-works/pi-ai` (^0.83.0), `@earendil-works/pi-agent-core`, `@mariozechner/mini-lit` (^0.2.1)
+- The `defaultChinese` translations are defined locally in `src/web-ui/utils/i18n.ts` (not yet published to npm)
+- Use standard `npm install <package>` to add or update dependencies
 
 ## Changelog
 Location: `CHANGELOG.md`

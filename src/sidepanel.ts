@@ -2,25 +2,15 @@ import { icon } from "@mariozechner/mini-lit";
 import { Button } from "@mariozechner/mini-lit/dist/Button.js";
 import { Input } from "@mariozechner/mini-lit/dist/Input.js";
 import "@mariozechner/mini-lit/dist/ThemeToggle.js";
+import "@mariozechner/mini-lit/dist/LanguageSelector.js";
 import {
 	Agent,
 	type AgentEvent,
 	type AgentMessage,
 	type AgentState,
 	type AgentTool,
-} from "@mariozechner/pi-agent-core";
-import { getModel, getModels, type Model } from "@mariozechner/pi-ai";
-import {
-	ChatPanel,
-	createExtractDocumentTool,
-	createStreamFn,
-	ModelSelector,
-	ProxyTab,
-	SettingsDialog,
-	// PersistentStorageDialog,
-	setAppStorage,
-	setShowJsonMode,
-} from "@mariozechner/pi-web-ui";
+} from "@earendil-works/pi-agent-core";
+import { getModel, getModels, type Model } from "@earendil-works/pi-ai/compat";
 import { html, render } from "lit";
 import { History, Plus, Settings } from "lucide";
 import { AboutTab } from "./dialogs/AboutTab.js";
@@ -52,6 +42,18 @@ import { isToolNavigating, NavigateTool } from "./tools/navigate.js";
 import { createReplTool } from "./tools/repl/repl.js";
 import { BrowserJsRuntimeProvider, NavigateRuntimeProvider } from "./tools/repl/runtime-providers.js";
 import * as port from "./utils/port.js";
+import { ProvidersModelsTab } from "./web-ui/dialogs/ProvidersModelsTab.js";
+import {
+	ChatPanel,
+	createExtractDocumentTool,
+	createStreamFn,
+	ModelSelector,
+	ProxyTab,
+	SettingsDialog,
+	// PersistentStorageDialog,
+	setAppStorage,
+	setShowJsonMode,
+} from "./web-ui/index.js";
 import "./utils/i18n-extension.js";
 import "./utils/live-reload.js";
 import { tutorials } from "./tutorials.js";
@@ -141,7 +143,7 @@ async function selectDefaultModelForAvailableProvider() {
 		if (modelId) {
 			const model = getModel(provider as any, modelId);
 			if (model) {
-				agent.setModel(model);
+				agent.state.model = model;
 				await storage.settings.set("lastUsedModel", model);
 				await updateAuthLabel();
 				renderApp();
@@ -154,7 +156,7 @@ async function selectDefaultModelForAvailableProvider() {
 	for (const provider of providers) {
 		const models = getModels(provider as any);
 		if (models.length > 0) {
-			agent.setModel(models[0]);
+			agent.state.model = models[0];
 			await storage.settings.set("lastUsedModel", models[0]);
 			await updateAuthLabel();
 			renderApp();
@@ -175,13 +177,22 @@ async function getProvidersWithKeys(): Promise<string[]> {
 
 async function hasAnyApiKey(): Promise<boolean> {
 	const providers = await storage.providerKeys.list();
-	return providers.length > 0;
+	if (providers.length > 0) return true;
+	const customProviders = await storage.customProviders.getAll();
+	return customProviders.length > 0;
 }
 
 function openApiKeysDialog(): Promise<void> {
 	return new Promise((resolve) => {
 		SettingsDialog.open(
-			[new ApiKeysOAuthTab(), new CostsTab(), new SkillsTab(), new ProxyTab(), new AboutTab()],
+			[
+				new ProvidersModelsTab(),
+				new ApiKeysOAuthTab(),
+				new CostsTab(),
+				new SkillsTab(),
+				new ProxyTab(),
+				new AboutTab(),
+			],
 			resolve,
 		);
 	});
@@ -373,6 +384,21 @@ const createAgent = async (initialState?: Partial<AgentState>, shouldSave = true
 			}
 		}
 	}
+	// Try custom providers as default model source
+	if (!defaultModel && !initialState?.model) {
+		try {
+			const customProviders = await storage.customProviders.getAll();
+			for (const provider of customProviders) {
+				if (provider.models && provider.models.length > 0) {
+					defaultModel = provider.models[0];
+					break;
+				}
+			}
+		} catch (_e) {
+			// Ignore errors during custom provider lookup
+		}
+	}
+
 	// Final fallback
 	if (!defaultModel && !initialState?.model) {
 		defaultModel = getModel("anthropic", "claude-sonnet-4-6");
@@ -395,10 +421,19 @@ const createAgent = async (initialState?: Partial<AgentState>, shouldSave = true
 		}),
 		getApiKey: async (provider: string) => {
 			const stored = await storage.providerKeys.get(provider);
-			if (!stored) return undefined;
-			const proxyEnabled = await storage.settings.get<boolean>("proxy.enabled");
-			const proxyUrl = proxyEnabled ? (await storage.settings.get<string>("proxy.url")) || undefined : undefined;
-			return resolveApiKey(stored, provider, storage.providerKeys, proxyUrl);
+			if (stored) {
+				const proxyEnabled = await storage.settings.get<boolean>("proxy.enabled");
+				const proxyUrl = proxyEnabled ? (await storage.settings.get<string>("proxy.url")) || undefined : undefined;
+				return resolveApiKey(stored, provider, storage.providerKeys, proxyUrl);
+			}
+			// Check custom providers for the API key
+			const customProviders = await storage.customProviders.getAll();
+			const customProvider = customProviders.find((p) => p.name === provider);
+			if (customProvider) {
+				// Return the configured key, or a dummy key for providers that don't require one (e.g. Ollama)
+				return customProvider.apiKey || "no-key-required";
+			}
+			return undefined;
 		},
 	});
 
@@ -465,20 +500,23 @@ const createAgent = async (initialState?: Partial<AgentState>, shouldSave = true
 			return await ApiKeyOrOAuthDialog.prompt(provider);
 		},
 		onModelSelect: async () => {
-			const providers = await getProvidersWithKeys();
-			if (providers.length === 0) {
+			const knownProviders = await getProvidersWithKeys();
+			const customProviders = await storage.customProviders.getAll();
+			const customProviderNames = customProviders.map((p) => p.name);
+			const allProviders = [...knownProviders, ...customProviderNames];
+			if (allProviders.length === 0) {
 				openApiKeysDialog();
 				return;
 			}
 			ModelSelector.open(
 				agent.state.model,
 				(model) => {
-					agent.setModel(model);
+					agent.state.model = model;
 					chatPanel.agentInterface?.requestUpdate();
 					updateAuthLabel().catch(() => {});
 					renderApp();
 				},
-				providers,
+				allProviders,
 			);
 		},
 		onBeforeSend: async () => {
@@ -508,7 +546,7 @@ const createAgent = async (initialState?: Partial<AgentState>, shouldSave = true
 			// Only add if URL changed
 			if (!lastUrl || lastUrl !== tab.url) {
 				const navMessage = await createNavigationMessage(tab.url, tab.title || "Untitled", tab.favIconUrl, tab.id);
-				agent.appendMessage(navMessage);
+				agent.state.messages.push(navMessage);
 			}
 		},
 		onCostClick: () => {
@@ -516,7 +554,9 @@ const createAgent = async (initialState?: Partial<AgentState>, shouldSave = true
 			SessionCostDialog.open(agent.state.messages);
 		},
 		toolsFactory: (_agent, _agentInterface, _artifactsPanel, runtimeProvidersFactory) => {
+			// @ts-expect-error - Tool types use any for flexibility
 			const navigateTool = new NavigateTool();
+			// @ts-expect-error - Tool types use any for flexibility
 			const selectElementTool = new AskUserWhichElementTool();
 
 			// Create extract_document tool with CORS proxy from settings (loaded above)
@@ -543,6 +583,7 @@ const createAgent = async (initialState?: Partial<AgentState>, shouldSave = true
 				];
 			};
 
+			// @ts-expect-error - Tool types use any for flexibility
 			const extractImageTool = new ExtractImageTool();
 			extractImageTool.windowId = currentWindowId;
 
@@ -557,6 +598,7 @@ const createAgent = async (initialState?: Partial<AgentState>, shouldSave = true
 
 			// Conditionally add debugger tool if enabled
 			if (debuggerModeEnabled) {
+				// @ts-expect-error - Tool types use any for flexibility
 				const debuggerTool = new DebuggerTool();
 				tools.push(debuggerTool);
 			}
@@ -695,6 +737,7 @@ const renderApp = () => {
 				</div>
 				<div class="flex items-center gap-1 px-2">
 					${agent ? html`<span class="text-[10px] text-muted-foreground truncate max-w-[120px]" title="${agent.state.model.provider}/${agent.state.model.id}${authLabel ? ` (${authLabel})` : ""}">${agent.state.model.provider}${authLabel ? html` <span class="text-[9px] opacity-70">${authLabel}</span>` : ""}</span>` : ""}
+					<language-selector></language-selector>
 					<theme-toggle></theme-toggle>
 					${Button({
 						variant: "ghost",
@@ -702,6 +745,7 @@ const renderApp = () => {
 						children: icon(Settings, "sm"),
 						onClick: () =>
 							SettingsDialog.open([
+								new ProvidersModelsTab(),
 								new ApiKeysOAuthTab(),
 								new CostsTab(),
 								new SkillsTab(),
@@ -997,7 +1041,7 @@ async function initApp() {
 				await createAgent();
 				if (agent) {
 					const welcomeMessage = createWelcomeMessage(tutorials);
-					agent.appendMessage(welcomeMessage);
+					agent.state.messages.push(welcomeMessage);
 				}
 				renderApp();
 				return;
@@ -1030,7 +1074,7 @@ async function initApp() {
 	// Add welcome message for new sessions
 	if (agent) {
 		const welcomeMessage = createWelcomeMessage(tutorials);
-		agent.appendMessage(welcomeMessage);
+		agent.state.messages.push(welcomeMessage);
 	}
 
 	renderApp();

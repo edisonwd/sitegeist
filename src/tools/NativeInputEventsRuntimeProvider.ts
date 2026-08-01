@@ -1,5 +1,5 @@
-import type { SandboxRuntimeProvider } from "@mariozechner/pi-web-ui";
 import { NATIVE_INPUT_EVENTS_DESCRIPTION } from "../prompts/prompts.js";
+import type { SandboxRuntimeProvider } from "../web-ui/index.js";
 
 /**
  * Provides native input event functions to JavaScript REPL using Chrome Debugger API.
