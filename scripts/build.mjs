@@ -13,11 +13,17 @@ const staticDir = join(packageRoot, "static");
 const targetBrowser = "chrome";
 const outDir = join(packageRoot, "dist-chrome");
 
+const isDev = process.env.NODE_ENV === "development" || isWatch;
+
 const entryPoints = {
 	sidepanel: join(packageRoot, "src/sidepanel.ts"),
-	debug: join(packageRoot, "src/debug.ts"),
-	icons: join(packageRoot, "src/icons.ts"),
 	background: join(packageRoot, "src/background.ts"),
+	...(isDev
+		? {
+				debug: join(packageRoot, "src/debug.ts"),
+				icons: join(packageRoot, "src/icons.ts"),
+			}
+		: {}),
 };
 
 rmSync(outDir, { recursive: true, force: true });
@@ -31,7 +37,7 @@ const buildOptions = {
 	format: "esm",
 	target: ["chrome120"],
 	platform: "browser",
-	sourcemap: isWatch ? "inline" : true,
+	sourcemap: isWatch ? "inline" : false,
 	entryNames: "[name]",
 	loader: {
 		".ts": "ts",
@@ -65,12 +71,15 @@ const copyStatic = () => {
 	const manifestDest = join(outDir, "manifest.json");
 	copyFileSync(manifestSource, manifestDest);
 
-	// Copy all files from static/ directory (except manifest files)
+	// Copy all files from static/ directory (except manifest files and dev-only files)
+	const devOnlyFiles = ["debug.html", "icons.html", "test.html"];
 	const staticFiles = getStaticFiles();
 	for (const relative of staticFiles) {
 		const filename = relative.replace("static/", "");
 		// Skip manifest files - we already copied the correct one above
 		if (filename.startsWith("manifest.")) continue;
+		// Skip dev-only files in production
+		if (!isDev && devOnlyFiles.includes(filename)) continue;
 
 		const source = join(packageRoot, relative);
 		const destination = join(outDir, filename);

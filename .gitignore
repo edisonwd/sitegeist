@@ -9,3 +9,5 @@ sitegeist-latest.zip
 *.screenflow/
 *.mp4
 version.json
+dist-release/
+sitegeist.zip

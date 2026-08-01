@@ -17,22 +17,62 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: 'npm'
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Build extension
         run: npm run build
 
+      - name: Prepare release package
+        run: |
+          # Create a clean release directory
+          rm -rf dist-release
+          mkdir -p dist-release
+
+          # Copy only production files (exclude dev-only files and source maps)
+          cd dist-chrome
+          for file in manifest.json app.css background.js sidepanel.js sandbox.js sandbox.html sidepanel.html theme-loader.js cors-rules.json; do
+            if [ -f "$file" ]; then
+              cp "$file" ../dist-release/
+            fi
+          done
+
+          # Copy icon files
+          for file in icon-*.png; do
+            if [ -f "$file" ]; then
+              cp "$file" ../dist-release/
+            fi
+          done
+
+          # Copy pdfjs-dist worker
+          if [ -d "pdfjs-dist" ]; then
+            cp -r pdfjs-dist ../dist-release/
+          fi
+
+          # Remove source maps (should not exist, but just in case)
+          find ../dist-release -name "*.map" -type f -delete
+
+          # Remove dev-only files
+          rm -f ../dist-release/debug.* ../dist-release/icons.* ../dist-release/test.html
+
+          echo "Release package contents:"
+          ls -lh ../dist-release/
+          echo "Total size:"
+          du -sh ../dist-release/
+
       - name: Create zip
         run: |
-          cd dist-chrome
-          find . -name "*.map" -type f -delete
+          cd dist-release
           zip -r ../sitegeist.zip .
+          cd ..
+          echo "Zip file size:"
+          ls -lh sitegeist.zip
 
       - name: Extract version
         id: version
-        run: echo "version=$(node -p "require('./dist-chrome/manifest.json').version")" >> "$GITHUB_OUTPUT"
+        run: echo "version=$(node -p "require('./dist-release/manifest.json').version")" >> "$GITHUB_OUTPUT"
 
       - name: Extract changelog
         run: |
