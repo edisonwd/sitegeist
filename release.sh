@@ -158,14 +158,6 @@ echo -e "${GREEN}✓${NC} Pushed to main"
 
 git push origin "$TAG"
 echo -e "${GREEN}✓${NC} Pushed tag"
-
-# Ensure release workflow runs.
-# push:tags (v*) should auto-trigger, but as a safety net we also
-# dispatch via gh CLI. The workflow is idempotent (upload --clobber).
-echo -e "${BLUE}Triggering release workflow...${NC}"
-gh workflow run build.yml --ref main -f tag="$TAG"
-echo -e "${GREEN}✓${NC} Workflow triggered"
-
 echo ""
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${GREEN}✓ Released v$NEW_VERSION${NC}"
