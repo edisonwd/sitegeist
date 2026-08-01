@@ -52,11 +52,6 @@ const buildOptions = {
 	// Force all mini-lit and lit imports to resolve to sitegeist's node_modules
 	alias: {
 		process: join(packageRoot, "scripts/process-shim.js"),
-		"@mariozechner/mini-lit": join(packageRoot, "node_modules/@mariozechner/mini-lit"),
-		lit: join(packageRoot, "node_modules/lit"),
-		"lit/decorators.js": join(packageRoot, "node_modules/lit/decorators.js"),
-		"lit/directives/class-map.js": join(packageRoot, "node_modules/lit/directives/class-map.js"),
-		"lit/directives/unsafe-html.js": join(packageRoot, "node_modules/lit/directives/unsafe-html.js"),
 	},
 };
 
