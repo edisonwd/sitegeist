@@ -4,6 +4,11 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g. v1.0.2)'
+        required: true
 
 permissions:
   contents: write
@@ -12,7 +17,18 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      - name: Determine ref
+        id: ref
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "ref=refs/tags/${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=${{ github.ref }}" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.ref.outputs.ref }}
 
       - uses: actions/setup-node@v4
         with:
@@ -52,9 +68,11 @@ jobs:
 
       - name: Create release
         run: |
-          gh release create ${{ github.ref_name }} sitegeist.zip \
+          TAG_NAME=$(echo "${{ steps.ref.outputs.ref }}" | sed 's|refs/tags/||')
+          gh release create "$TAG_NAME" sitegeist.zip \
             --title "Sitegeist ${{ steps.version.outputs.version }}" \
             --notes-file /tmp/release-notes.md \
-            --latest
+            --latest || \
+          gh release upload "$TAG_NAME" sitegeist.zip --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
