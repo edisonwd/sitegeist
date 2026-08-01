@@ -17,18 +17,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Determine ref
-        id: ref
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "ref=refs/tags/${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "ref=${{ github.ref }}" >> "$GITHUB_OUTPUT"
-          fi
-
       - uses: actions/checkout@v4
         with:
-          ref: ${{ steps.ref.outputs.ref }}
+          ref: main
 
       - uses: actions/setup-node@v4
         with:
@@ -66,13 +57,21 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
 
+      - name: Determine tag name
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "name=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Create release
         run: |
-          TAG_NAME=$(echo "${{ steps.ref.outputs.ref }}" | sed 's|refs/tags/||')
-          gh release create "$TAG_NAME" sitegeist.zip \
+          gh release create "${{ steps.tag.outputs.name }}" sitegeist.zip \
             --title "Sitegeist ${{ steps.version.outputs.version }}" \
             --notes-file /tmp/release-notes.md \
             --latest || \
-          gh release upload "$TAG_NAME" sitegeist.zip --clobber
+          gh release upload "${{ steps.tag.outputs.name }}" sitegeist.zip --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
