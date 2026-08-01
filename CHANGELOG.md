@@ -2,7 +2,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Release workflow and build script to exclude dev-only files (debug.js, icons.js, test.html) and source maps from production builds, reducing package size from 82MB to 15MB
+
 ## [1.0.1] - 2026-08-01
+
 
 ### Changed
 
