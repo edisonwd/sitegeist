@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-08-01
+
 ### Changed
 
 - **Release Script**: Optimized `release.sh` with colored output, dry-run mode (`--dry-run`), tag existence check, branch validation, and interactive confirmation. Updated GitHub URL to current repository (edisonwd/sitegeist).
