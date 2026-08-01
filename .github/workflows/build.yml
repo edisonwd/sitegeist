@@ -18,19 +18,7 @@ jobs:
         with:
           node-version: 22
 
-      - name: Clone mini-lit
-        run: git clone --depth 1 https://github.com/badlogic/mini-lit.git ../mini-lit
-
-      - name: Clone pi-mono
-        run: git clone --depth 1 https://github.com/badlogic/pi-mono.git ../pi-mono
-
-      - name: Install mini-lit
-        run: cd ../mini-lit && npm install && npm run build
-
-      - name: Install pi-mono
-        run: cd ../pi-mono && npm install && npm run build
-
-      - name: Install sitegeist
+      - name: Install dependencies
         run: npm install
 
       - name: Build extension
