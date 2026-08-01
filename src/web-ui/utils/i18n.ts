@@ -229,6 +229,17 @@ declare module "@mariozechner/mini-lit" {
 		Disconnected: string;
 		"No models defined": string;
 		"Add Model": string;
+		"Edit Model": string;
+		Provider: string;
+		"Model ID": string;
+		"Model Name": string;
+		"Context Window": string;
+		"Max Tokens": string;
+		"Reasoning / Thinking": string;
+		"Vision / Image Input": string;
+		"Cost (per 1M tokens)": string;
+		"Cache Read": string;
+		"Cache Write": string;
 	}
 }
 
@@ -456,6 +467,17 @@ export const translations = {
 		Disconnected: "Disconnected",
 		"No models defined": "No models defined",
 		"Add Model": "Add Model",
+		"Edit Model": "Edit Model",
+		Provider: "Provider",
+		"Model ID": "Model ID",
+		"Model Name": "Model Name",
+		"Context Window": "Context Window",
+		"Max Tokens": "Max Tokens",
+		"Reasoning / Thinking": "Reasoning / Thinking",
+		"Vision / Image Input": "Vision / Image Input",
+		"Cost (per 1M tokens)": "Cost (per 1M tokens)",
+		"Cache Read": "Cache Read",
+		"Cache Write": "Cache Write",
 	},
 	de: {
 		...defaultGerman,
@@ -680,6 +702,17 @@ export const translations = {
 		Disconnected: "Getrennt",
 		"No models defined": "Keine Modelle definiert",
 		"Add Model": "Modell hinzufügen",
+		"Edit Model": "Modell bearbeiten",
+		Provider: "Anbieter",
+		"Model ID": "Modell-ID",
+		"Model Name": "Modellname",
+		"Context Window": "Kontextfenster",
+		"Max Tokens": "Max. Tokens",
+		"Reasoning / Thinking": "Schlussfolgern / Denken",
+		"Vision / Image Input": "Vision / Bildeingabe",
+		"Cost (per 1M tokens)": "Kosten (pro 1M Tokens)",
+		"Cache Read": "Cache Lesen",
+		"Cache Write": "Cache Schreiben",
 	},
 	zh: {
 		...defaultChinese,
@@ -895,6 +928,17 @@ export const translations = {
 		Disconnected: "已断开",
 		"No models defined": "未定义模型",
 		"Add Model": "添加模型",
+		"Edit Model": "编辑模型",
+		Provider: "提供商",
+		"Model ID": "模型 ID",
+		"Model Name": "模型名称",
+		"Context Window": "上下文窗口",
+		"Max Tokens": "最大 Tokens",
+		"Reasoning / Thinking": "推理 / 思考",
+		"Vision / Image Input": "视觉 / 图像输入",
+		"Cost (per 1M tokens)": "费用 (每百万 tokens)",
+		"Cache Read": "缓存读取",
+		"Cache Write": "缓存写入",
 	},
 };
 
