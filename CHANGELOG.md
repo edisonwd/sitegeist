@@ -7,6 +7,7 @@
 - **Release Script**: Optimized `release.sh` with colored output, dry-run mode (`--dry-run`), tag existence check, branch validation, and interactive confirmation. Updated GitHub URL to current repository (edisonwd/sitegeist).
 - **依赖管理**: 将所有本地文件依赖迁移到 npm 包：`@earendil-works/pi-ai` (^0.83.0)、`@earendil-works/pi-agent-core`、`@mariozechner/mini-lit` (^0.2.1)，简化依赖管理和部署流程
 
+- **Code Quality**: Fixed Biome lint warnings - removed unused import in CustomModelDialog.ts and unused suppression comments in app.css and test-sessions.ts
 ### Fixed
 
 - Custom provider models not appearing in the model selector when the provider name drifts from the stored model provider field (e.g. after renaming a provider). Manual models now always use the current provider name, matching auto-discovery behavior.
