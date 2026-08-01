@@ -32,6 +32,13 @@ if [ "$BUMP_TYPE" != "major" ] && [ "$BUMP_TYPE" != "minor" ] && [ "$BUMP_TYPE" 
     exit 1
 fi
 
+# Check if gh CLI is available (needed to trigger workflow)
+if ! command -v gh &> /dev/null; then
+    echo -e "${RED}Error: GitHub CLI (gh) is required but not installed${NC}"
+    echo "Install it from: https://cli.github.com/"
+    exit 1
+fi
+
 # Check for uncommitted changes
 if [ -n "$(git status --porcelain)" ]; then
     echo -e "${RED}Error: Uncommitted changes detected${NC}"
@@ -151,6 +158,13 @@ echo -e "${GREEN}✓${NC} Pushed to main"
 
 git push origin "$TAG"
 echo -e "${GREEN}✓${NC} Pushed tag"
+
+# Ensure release workflow runs.
+# push:tags (v*) should auto-trigger, but as a safety net we also
+# dispatch via gh CLI. The workflow is idempotent (upload --clobber).
+echo -e "${BLUE}Triggering release workflow...${NC}"
+gh workflow run build.yml --ref main -f tag="$TAG"
+echo -e "${GREEN}✓${NC} Workflow triggered"
 
 echo ""
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
