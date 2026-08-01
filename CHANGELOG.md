@@ -2,20 +2,12 @@
 
 ## [Unreleased]
 
-## [1.0.2] - 2026-08-01
-
-### Fixed
-
-- Release workflow and build script to exclude dev-only files (debug.js, icons.js, test.html) and source maps from production builds, reducing package size from 82MB to 15MB
-
-## [1.0.1] - 2026-08-01
-
-
 ### Changed
 
+- **自定义 Providers & Models**: 支持自定义模型提供商和模型系统，允许用户添加和管理自己的 AI 提供商和模型
+- **多语言切换**: 支持多语言切换功能，用户可以在界面中切换不同语言
 - **Release Script**: Optimized `release.sh` with colored output, dry-run mode (`--dry-run`), tag existence check, branch validation, and interactive confirmation. Updated GitHub URL to current repository (edisonwd/sitegeist).
 - **依赖管理**: 将所有本地文件依赖迁移到 npm 包：`@earendil-works/pi-ai` (^0.83.0)、`@earendil-works/pi-agent-core`、`@mariozechner/mini-lit` (^0.2.1)，简化依赖管理和部署流程
-
 - **Code Quality**: Fixed Biome lint warnings - removed unused import in CustomModelDialog.ts and unused suppression comments in app.css and test-sessions.ts
 ### Fixed
 
