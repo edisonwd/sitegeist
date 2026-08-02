@@ -554,9 +554,7 @@ const createAgent = async (initialState?: Partial<AgentState>, shouldSave = true
 			SessionCostDialog.open(agent.state.messages);
 		},
 		toolsFactory: (_agent, _agentInterface, _artifactsPanel, runtimeProvidersFactory) => {
-			// @ts-expect-error - Tool types use any for flexibility
 			const navigateTool = new NavigateTool();
-			// @ts-expect-error - Tool types use any for flexibility
 			const selectElementTool = new AskUserWhichElementTool();
 
 			// Create extract_document tool with CORS proxy from settings (loaded above)
@@ -583,24 +581,22 @@ const createAgent = async (initialState?: Partial<AgentState>, shouldSave = true
 				];
 			};
 
-			// @ts-expect-error - Tool types use any for flexibility
 			const extractImageTool = new ExtractImageTool();
 			extractImageTool.windowId = currentWindowId;
 
 			const tools: AgentTool<any, any>[] = [
-				navigateTool,
-				selectElementTool,
+				navigateTool as any,
+				selectElementTool as any,
 				replTool,
 				skillTool,
 				extractDocumentTool,
-				extractImageTool,
+				extractImageTool as any,
 			];
 
 			// Conditionally add debugger tool if enabled
 			if (debuggerModeEnabled) {
-				// @ts-expect-error - Tool types use any for flexibility
 				const debuggerTool = new DebuggerTool();
-				tools.push(debuggerTool);
+				tools.push(debuggerTool as any);
 			}
 
 			return tools;
