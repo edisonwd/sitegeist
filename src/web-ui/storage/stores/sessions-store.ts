@@ -116,6 +116,8 @@ export class SessionsStore extends Store {
 			messages: state.messages || [],
 			createdAt: meta.createdAt,
 			lastModified: new Date().toISOString(),
+			source: (meta as any).source,
+			taskId: (meta as any).taskId,
 		};
 
 		await this.save(data, meta);

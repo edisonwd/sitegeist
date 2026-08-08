@@ -1,4 +1,5 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import type { Model } from "@earendil-works/pi-ai/compat";
 
 export type ScheduleConfig =
 	| { type: "once"; at: string }
@@ -12,24 +13,15 @@ export interface ScheduledTask {
 	promptTemplate: string;
 	schedule: ScheduleConfig;
 	executionMode: "silent" | "visible";
+	model?: Model<any>;
 	targetUrl?: string;
 	enabled: boolean;
 	lastRunAt?: string;
 	lastRunStatus?: "success" | "failed" | "timeout";
+	lastSessionId?: string;
 	nextRunAt?: string;
 	createdAt: string;
 	updatedAt: string;
-}
-
-export interface TaskExecutionLog {
-	id: string;
-	taskId: string;
-	startedAt: string;
-	finishedAt?: string;
-	status: "running" | "success" | "failed" | "timeout";
-	error?: string;
-	summary?: string;
-	agentMessages: AgentMessage[];
 }
 
 export interface TaskExecutionResult {

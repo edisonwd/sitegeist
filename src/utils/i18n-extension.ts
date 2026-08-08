@@ -132,6 +132,78 @@ declare module "@mariozechner/mini-lit" {
 		"Name (cannot be changed)": string;
 		"Edit Skill:": string;
 		Skills: string;
+		// Scheduled Tasks Tab
+		"Scheduled Tasks": string;
+		"New Task": string;
+		"Edit Task": string;
+		"Delete Task": string;
+		'Delete task "{name}"?': string;
+		"No scheduled tasks yet": string;
+		"Create a scheduled task to automate web operations": string;
+		"Task Name": string;
+		Description: string;
+		"Target URL": string;
+		Schedule: string;
+		"Run Once": string;
+		Interval: string;
+		Cron: string;
+		"Execution Mode": string;
+		Silent: string;
+		Visible: string;
+		"Silent mode runs the task in a background tab": string;
+		"Visible mode runs the task in a foreground tab": string;
+		"At:": string;
+		"Every (minutes):": string;
+		"Cron Expression:": string;
+		"Cron Presets": string;
+		"Every hour": string;
+		"Every day at 9:00": string;
+		"Every Monday at 9:00": string;
+		"Every 1st of month at 9:00": string;
+		"Prompt Template": string;
+		"Advanced: override the default prompt template for this task.": string;
+		Enabled: string;
+		Disabled: string;
+		"Last run": string;
+		"Next run": string;
+		History: string;
+		Success: string;
+		Failed: string;
+		Timeout: string;
+		Running: string;
+		"Never run": string;
+		"Execution History": string;
+		"No execution history": string;
+		"Task created": string;
+		"Task updated": string;
+		"Task deleted": string;
+		"Invalid cron expression": string;
+		"Please enter a task name": string;
+		"Please select a schedule time": string;
+		"Please enter an interval in minutes": string;
+		"Please enter a cron expression": string;
+		"Save Task": string;
+		Cancel: string;
+		Enable: string;
+		Disable: string;
+		Edit: string;
+		"Task Name (required)": string;
+		"Description (optional)": string;
+		"Target URL (optional, opens in task tab)": string;
+		"Create your first task to get started": string;
+		"Manage scheduled tasks for automated web operations.": string;
+		"Minimum interval is 1 minute": string;
+		"Once tasks are automatically disabled after execution": string;
+		"Use natural language to describe what the task should do": string;
+		"Task will run at the specified time": string;
+		"Task will repeat at the specified interval": string;
+		"Task will follow the cron schedule": string;
+		Model: string;
+		"Default (last used)": string;
+		Select: string;
+		Reset: string;
+		"Reset to default": string;
+		"Choose which AI model to use for this task. Default uses the last selected model.": string;
 	}
 }
 
@@ -267,6 +339,81 @@ const sitegeistTranslations = {
 		"Name (cannot be changed)": "Name (cannot be changed)",
 		"Edit Skill:": "Edit Skill:",
 		Skills: "Skills",
+		// Scheduled Tasks
+		"Scheduled Tasks": "Scheduled Tasks",
+		"New Task": "New Task",
+		"Edit Task": "Edit Task",
+		"Delete Task": "Delete Task",
+		'Delete task "{name}"?': 'Delete task "{name}"?',
+		"No scheduled tasks yet": "No scheduled tasks yet",
+		"Create a scheduled task to automate web operations": "Create a scheduled task to automate web operations",
+		"Task Name": "Task Name",
+		Description: "Description",
+		"Target URL": "Target URL",
+		Schedule: "Schedule",
+		"Run Once": "Run Once",
+		Interval: "Interval",
+		Cron: "Cron",
+		"Execution Mode": "Execution Mode",
+		Silent: "Silent",
+		Visible: "Visible",
+		"Silent mode runs the task in a background tab": "Silent mode runs the task in a background tab",
+		"Visible mode runs the task in a foreground tab": "Visible mode runs the task in a foreground tab",
+		"At:": "At:",
+		"Every (minutes):": "Every (minutes):",
+		"Cron Expression:": "Cron Expression:",
+		"Cron Presets": "Cron Presets",
+		"Every hour": "Every hour",
+		"Every day at 9:00": "Every day at 9:00",
+		"Every Monday at 9:00": "Every Monday at 9:00",
+		"Every 1st of month at 9:00": "Every 1st of month at 9:00",
+		"Prompt Template": "Prompt Template",
+		"Advanced: override the default prompt template for this task.":
+			"Advanced: override the default prompt template for this task.",
+		Enabled: "Enabled",
+		Disabled: "Disabled",
+		"Last run": "Last run",
+		"Next run": "Next run",
+		History: "History",
+		Success: "Success",
+		Failed: "Failed",
+		Timeout: "Timeout",
+		Running: "Running",
+		"Never run": "Never run",
+		"Execution History": "Execution History",
+		"No execution history": "No execution history",
+		"Task created": "Task created",
+		"Task updated": "Task updated",
+		"Task deleted": "Task deleted",
+		"Invalid cron expression": "Invalid cron expression",
+		"Please enter a task name": "Please enter a task name",
+		"Please select a schedule time": "Please select a schedule time",
+		"Please enter an interval in minutes": "Please enter an interval in minutes",
+		"Please enter a cron expression": "Please enter a cron expression",
+		"Save Task": "Save Task",
+		Cancel: "Cancel",
+		Enable: "Enable",
+		Disable: "Disable",
+		Edit: "Edit",
+		"Task Name (required)": "Task Name (required)",
+		"Description (optional)": "Description (optional)",
+		"Target URL (optional, opens in task tab)": "Target URL (optional, opens in task tab)",
+		"Create your first task to get started": "Create your first task to get started",
+		"Manage scheduled tasks for automated web operations.": "Manage scheduled tasks for automated web operations.",
+		"Minimum interval is 1 minute": "Minimum interval is 1 minute",
+		"Once tasks are automatically disabled after execution": "Once tasks are automatically disabled after execution",
+		"Use natural language to describe what the task should do":
+			"Use natural language to describe what the task should do",
+		"Task will run at the specified time": "Task will run at the specified time",
+		"Task will repeat at the specified interval": "Task will repeat at the specified interval",
+		"Task will follow the cron schedule": "Task will follow the cron schedule",
+		Model: "Model",
+		"Default (last used)": "Default (last used)",
+		Select: "Select",
+		Reset: "Reset",
+		"Reset to default": "Reset to default",
+		"Choose which AI model to use for this task. Default uses the last selected model.":
+			"Choose which AI model to use for this task. Default uses the last selected model.",
 	},
 	de: {
 		"Permission request failed": "Berechtigungsanfrage fehlgeschlagen",
@@ -401,6 +548,74 @@ const sitegeistTranslations = {
 		"Name (cannot be changed)": "Name (kann nicht geändert werden)",
 		"Edit Skill:": "Skill bearbeiten:",
 		Skills: "Skills",
+		// Scheduled Tasks
+		"Scheduled Tasks": "Scheduled Tasks",
+		"New Task": "New Task",
+		"Edit Task": "Edit Task",
+		"Delete Task": "Delete Task",
+		'Delete task "{name}"?': 'Delete task "{name}"?',
+		"No scheduled tasks yet": "No scheduled tasks yet",
+		"Create a scheduled task to automate web operations": "Create a scheduled task to automate web operations",
+		"Task Name": "Task Name",
+		Description: "Description",
+		"Target URL": "Target URL",
+		Schedule: "Schedule",
+		"Run Once": "Run Once",
+		Interval: "Interval",
+		Cron: "Cron",
+		"Execution Mode": "Execution Mode",
+		Silent: "Silent",
+		Visible: "Visible",
+		"Silent mode runs the task in a background tab": "Silent mode runs the task in a background tab",
+		"Visible mode runs the task in a foreground tab": "Visible mode runs the task in a foreground tab",
+		"At:": "At:",
+		"Every (minutes):": "Every (minutes):",
+		"Cron Expression:": "Cron Expression:",
+		"Cron Presets": "Cron Presets",
+		"Every hour": "Every hour",
+		"Every day at 9:00": "Every day at 9:00",
+		"Every Monday at 9:00": "Every Monday at 9:00",
+		"Every 1st of month at 9:00": "Every 1st of month at 9:00",
+		"Prompt Template": "Prompt Template",
+		"Advanced: override the default prompt template for this task.":
+			"Advanced: override the default prompt template for this task.",
+		Enabled: "Enabled",
+		Disabled: "Disabled",
+		"Last run": "Last run",
+		"Next run": "Next run",
+		History: "History",
+		Success: "Success",
+		Failed: "Failed",
+		Timeout: "Timeout",
+		Running: "Running",
+		"Never run": "Never run",
+		"Execution History": "Execution History",
+		"No execution history": "No execution history",
+		"Task created": "Task created",
+		"Task updated": "Task updated",
+		"Task deleted": "Task deleted",
+		"Invalid cron expression": "Invalid cron expression",
+		"Please enter a task name": "Please enter a task name",
+		"Please select a schedule time": "Please select a schedule time",
+		"Please enter an interval in minutes": "Please enter an interval in minutes",
+		"Please enter a cron expression": "Please enter a cron expression",
+		"Save Task": "Save Task",
+		Cancel: "Cancel",
+		Enable: "Enable",
+		Disable: "Disable",
+		Edit: "Edit",
+		"Task Name (required)": "Task Name (required)",
+		"Description (optional)": "Description (optional)",
+		"Target URL (optional, opens in task tab)": "Target URL (optional, opens in task tab)",
+		"Create your first task to get started": "Create your first task to get started",
+		"Manage scheduled tasks for automated web operations.": "Manage scheduled tasks for automated web operations.",
+		"Minimum interval is 1 minute": "Minimum interval is 1 minute",
+		"Once tasks are automatically disabled after execution": "Once tasks are automatically disabled after execution",
+		"Use natural language to describe what the task should do":
+			"Use natural language to describe what the task should do",
+		"Task will run at the specified time": "Task will run at the specified time",
+		"Task will repeat at the specified interval": "Task will repeat at the specified interval",
+		"Task will follow the cron schedule": "Task will follow the cron schedule",
 	},
 	zh: {
 		"Permission request failed": "权限请求失败",
@@ -525,6 +740,79 @@ const sitegeistTranslations = {
 		"Name (cannot be changed)": "名称（不可更改）",
 		"Edit Skill:": "编辑技能：",
 		Skills: "技能",
+		// Scheduled Tasks
+		"Scheduled Tasks": "定时任务",
+		"New Task": "新建任务",
+		"Edit Task": "编辑任务",
+		"Delete Task": "删除任务",
+		'Delete task "{name}"?': "删除任务「{name}」？",
+		"No scheduled tasks yet": "暂无定时任务",
+		"Create a scheduled task to automate web operations": "创建定时任务以自动化网页操作",
+		"Task Name": "任务名称",
+		Description: "描述",
+		"Target URL": "目标网址",
+		Schedule: "计划",
+		"Run Once": "单次执行",
+		Interval: "间隔执行",
+		Cron: "Cron 表达式",
+		"Execution Mode": "执行模式",
+		Silent: "静默",
+		Visible: "可见",
+		"Silent mode runs the task in a background tab": "静默模式在后台标签页中运行任务",
+		"Visible mode runs the task in a foreground tab": "可见模式在前台标签页中运行任务",
+		"At:": "时间：",
+		"Every (minutes):": "每（分钟）：",
+		"Cron Expression:": "Cron 表达式：",
+		"Cron Presets": "Cron 预设",
+		"Every hour": "每小时",
+		"Every day at 9:00": "每天 9:00",
+		"Every Monday at 9:00": "每周一 9:00",
+		"Every 1st of month at 9:00": "每月 1 日 9:00",
+		"Prompt Template": "提示词模板",
+		"Advanced: override the default prompt template for this task.": "高级：覆盖此任务的默认提示词模板。",
+		Enabled: "已启用",
+		Disabled: "已禁用",
+		"Last run": "上次运行",
+		"Next run": "下次运行",
+		History: "历史",
+		Success: "成功",
+		Failed: "失败",
+		Timeout: "超时",
+		Running: "运行中",
+		"Never run": "从未运行",
+		"Execution History": "执行历史",
+		"No execution history": "暂无执行历史",
+		"Task created": "任务已创建",
+		"Task updated": "任务已更新",
+		"Task deleted": "任务已删除",
+		"Invalid cron expression": "无效的 Cron 表达式",
+		"Please enter a task name": "请输入任务名称",
+		"Please select a schedule time": "请选择执行时间",
+		"Please enter an interval in minutes": "请输入间隔分钟数",
+		"Please enter a cron expression": "请输入 Cron 表达式",
+		"Save Task": "保存任务",
+		Cancel: "取消",
+		Enable: "启用",
+		Disable: "禁用",
+		Edit: "编辑",
+		"Task Name (required)": "任务名称（必填）",
+		"Description (optional)": "描述（可选）",
+		"Target URL (optional, opens in task tab)": "目标网址（可选，在任务标签页中打开）",
+		"Create your first task to get started": "创建第一个任务以开始使用",
+		"Manage scheduled tasks for automated web operations.": "管理定时任务以自动化网页操作。",
+		"Minimum interval is 1 minute": "最小间隔为 1 分钟",
+		"Once tasks are automatically disabled after execution": "单次任务执行后自动禁用",
+		"Use natural language to describe what the task should do": "使用自然语言描述任务应执行的操作",
+		"Task will run at the specified time": "任务将在指定时间运行",
+		"Task will repeat at the specified interval": "任务将按指定间隔重复执行",
+		"Task will follow the cron schedule": "任务将按照 Cron 计划执行",
+		Model: "模型",
+		"Default (last used)": "默认（上次使用）",
+		Select: "选择",
+		Reset: "重置",
+		"Reset to default": "重置为默认",
+		"Choose which AI model to use for this task. Default uses the last selected model.":
+			"选择此任务使用的 AI 模型。默认使用上次选择的模型。",
 	},
 };
 

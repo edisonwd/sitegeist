@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+### Added
+
+- Scheduled tasks: create, edit, and manage timed Agent operations via Settings > Scheduled Tasks
+- Scheduled tasks: per-task model selection with fallback to last used model
+- Support for one-time, interval, and cron-based scheduling
+- Foreground execution mode: tasks run in the sidepanel with streaming output, chat history serves as execution log
+- Offscreen fallback when no sidepanel is available
+- Execution history dialog with per-task session filtering (source/taskId metadata)
+- Chrome notifications on task completion, failure, or timeout
+
+### Changed
+
+- Scheduled tasks migrated from background-only execution to foreground-first execution in the sidepanel
+- Removed standalone execution log store (execution-log-store.ts) in favor of session-based history
+
+### Fixed
+
+- Scheduled task history dialog showing 0 results: session metadata now includes source and taskId fields
+- Offscreen document errors by resolving chrome.storage access in the background service worker
+
 ## [1.0.8] - 2026-08-01
 
 ### Changed
@@ -23,6 +43,9 @@
 ## [1.0.0] - 2026-03-15
 
 ### Added
+
+- Scheduled tasks: per-task model selection - choose which AI model to use for each scheduled task, with fallback to last used model
+- Scheduled tasks: fix offscreen document errors by resolving chrome.storage access in the background service worker
 
 - Browser-based OAuth login for Anthropic (Claude Pro/Max), OpenAI Codex (ChatGPT Plus/Pro), GitHub Copilot, and Google Gemini CLI
 - Combined "API Keys & OAuth" settings tab with subscription login and API key entry

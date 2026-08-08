@@ -17,6 +17,7 @@ import { AboutTab } from "./dialogs/AboutTab.js";
 import { ApiKeyOrOAuthDialog } from "./dialogs/ApiKeyOrOAuthDialog.js";
 import { ApiKeysOAuthTab } from "./dialogs/ApiKeysOAuthTab.js";
 import { CostsTab } from "./dialogs/CostsTab.js";
+import { ScheduledTasksTab } from "./dialogs/ScheduledTasksTab.js";
 import { SessionCostDialog } from "./dialogs/SessionCostDialog.js";
 import { SitegeistSessionListDialog } from "./dialogs/SessionListDialog.js";
 import { SkillsTab } from "./dialogs/SkillsTab.js";
@@ -33,7 +34,7 @@ import { registerUserMessageRenderer } from "./messages/UserMessageRenderer.js";
 import { createWelcomeMessage, registerWelcomeRenderer } from "./messages/WelcomeMessage.js";
 import { isOAuthCredentials, resolveApiKey } from "./oauth/index.js";
 import { SYSTEM_PROMPT } from "./prompts/prompts.js";
-import { SitegeistAppStorage } from "./storage/app-storage.js";
+import { getSitegeistStorage, SitegeistAppStorage } from "./storage/app-storage.js";
 import { DebuggerTool } from "./tools/debugger.js";
 import { ExtractImageTool, registerExtractImageRenderer } from "./tools/extract-image.js";
 import { AskUserWhichElementTool, skillTool } from "./tools/index.js";
@@ -77,6 +78,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 		}
 		return true; // Keep channel open for async response
 	}
+	if (message.type === "execute-scheduled-task") {
+		console.log("[Sidepanel] Scheduled task execution requested:", {
+			taskId: message.taskId,
+			sessionId: message.sessionId,
+		});
+		// Navigate to the session with scheduled task params
+		// This will trigger initApp to load the session and auto-run the task
+		const url = new URL(window.location.href);
+		url.search = `?session=${message.sessionId}&scheduledTask=${message.taskId}`;
+		window.location.href = url.toString();
+		sendResponse({ success: true });
+		return true;
+	}
 });
 
 // ============================================================================
@@ -95,6 +109,7 @@ let agent: Agent;
 let chatPanel: ChatPanel;
 let agentUnsubscribe: (() => void) | undefined;
 let currentWindowId: number;
+let currentScheduledTaskId: string | undefined;
 
 // Track which skills we've shown in full (skillName -> lastUpdated timestamp)
 // Reset when a new session/agent is created
@@ -190,6 +205,7 @@ function openApiKeysDialog(): Promise<void> {
 				new ApiKeysOAuthTab(),
 				new CostsTab(),
 				new SkillsTab(),
+				new ScheduledTasksTab(),
 				new ProxyTab(),
 				new AboutTab(),
 			],
@@ -313,7 +329,7 @@ const saveSession = async () => {
 		const existingMetadata = await storage.sessions.getMetadata(currentSessionId);
 		const createdAt = existingMetadata?.createdAt || new Date().toISOString();
 
-		const metadata = {
+		const metadata: any = {
 			id: currentSessionId,
 			title: currentTitle,
 			createdAt,
@@ -324,6 +340,12 @@ const saveSession = async () => {
 			thinkingLevel: state.thinkingLevel,
 			preview,
 		};
+
+		// Include scheduled task metadata for history filtering
+		if (currentScheduledTaskId) {
+			metadata.source = "scheduled";
+			metadata.taskId = currentScheduledTaskId;
+		}
 
 		await storage.sessions.saveSession(currentSessionId, state, metadata, currentTitle);
 	} catch (err) {
@@ -745,6 +767,7 @@ const renderApp = () => {
 								new ApiKeysOAuthTab(),
 								new CostsTab(),
 								new SkillsTab(),
+								new ScheduledTasksTab(),
 								new ProxyTab(),
 								new AboutTab(),
 							]),
@@ -941,6 +964,85 @@ async function checkForUpdates() {
 }
 
 // ============================================================================
+// SCHEDULED TASK EXECUTION
+// ============================================================================
+async function runScheduledTask(taskId: string, sessionId: string): Promise<void> {
+	console.log("[Sidepanel] Running scheduled task:", taskId);
+
+	// Track scheduled task ID for session metadata
+	currentScheduledTaskId = taskId;
+
+	// Load task from storage
+	const storage = getSitegeistStorage();
+	const task = await storage.schedule.get(taskId);
+	if (!task) {
+		console.error("[Sidepanel] Task not found:", taskId);
+		return;
+	}
+
+	// Wait for UI to render and agent to be ready
+	await new Promise<void>((resolve) => {
+		const checkReady = () => {
+			if (chatPanel?.agentInterface && agent && !agent.state.isStreaming) {
+				resolve();
+			} else {
+				setTimeout(checkReady, 100);
+			}
+		};
+		checkReady();
+	});
+
+	// Build system prompt with task description
+	const taskSystemPrompt = `${SYSTEM_PROMPT}\n\nYou are executing a scheduled task. The target tab is already open. Follow these instructions precisely and report what you accomplished:\n\n${task.description}`;
+
+	// Update agent system prompt if different
+	if (agent.state.systemPrompt !== taskSystemPrompt) {
+		agent.state.systemPrompt = taskSystemPrompt;
+	}
+
+	// Set title with running status
+	currentTitle = `${task.name} [running]`;
+
+	// Subscribe to agent events to detect completion
+	let completionHandled = false;
+	const completionUnsub = agent.subscribe((event: AgentEvent) => {
+		if (event.type === "agent_end" && !completionHandled) {
+			completionHandled = true;
+
+			// Determine status from last assistant message
+			const lastAssistant = [...event.messages].reverse().find((m: AgentMessage) => m.role === "assistant") as any;
+
+			const status = lastAssistant?.stopReason === "error" ? "failed" : "success";
+			const errorMsg = lastAssistant?.errorMessage;
+
+			// Update title with final status
+			currentTitle = `${task.name} [${status}]`;
+
+			console.log("[Sidepanel] Scheduled task completed:", { status, errorMsg });
+
+			// Notify background of completion
+			chrome.runtime
+				.sendMessage({
+					type: "scheduled-task-complete",
+					taskId,
+					sessionId,
+					status,
+					error: errorMsg,
+				})
+				.catch((err) => {
+					console.error("[Sidepanel] Failed to notify background of task completion:", err);
+				});
+
+			completionUnsub();
+		}
+	});
+
+	// Send the task prompt
+	console.log("[Sidepanel] Sending task prompt:", task.promptTemplate.substring(0, 100));
+	await chatPanel.agentInterface.sendMessage(task.promptTemplate);
+}
+
+// ============================================================================
 // INIT
 // ============================================================================
 async function initApp() {
@@ -1022,6 +1124,8 @@ async function initApp() {
 		}
 	}
 
+	const scheduledTaskId = urlParams.get("scheduledTask");
+
 	if (sessionIdFromUrl && storage.sessions) {
 		const sessionData = await storage.sessions.loadSession(sessionIdFromUrl);
 		if (sessionData) {
@@ -1056,9 +1160,22 @@ async function initApp() {
 			});
 
 			renderApp();
+
+			// Auto-run scheduled task if requested
+			if (scheduledTaskId && chatPanel.agentInterface) {
+				await runScheduledTask(scheduledTaskId, sessionIdFromUrl);
+			}
 			return;
 		} else {
-			// Session doesn't exist, redirect to new session
+			// Session doesn't exist - if it's a scheduled task, create it
+			if (scheduledTaskId) {
+				currentSessionId = sessionIdFromUrl;
+				await createAgent();
+				renderApp();
+				await runScheduledTask(scheduledTaskId, sessionIdFromUrl);
+				return;
+			}
+			// Regular session doesn't exist, redirect to new session
 			newSession();
 			return;
 		}

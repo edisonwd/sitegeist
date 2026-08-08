@@ -1,4 +1,3 @@
-import { ExecutionLogStore } from "../scheduler/execution-log-store.js";
 import { ScheduleStore } from "../scheduler/schedule-store.js";
 import {
 	AppStorage as BaseAppStorage,
@@ -17,7 +16,6 @@ export class SitegeistAppStorage extends BaseAppStorage {
 	readonly skills: SkillsStore;
 	readonly costs: CostStore;
 	readonly schedule: ScheduleStore;
-	readonly executionLogs: ExecutionLogStore;
 
 	constructor() {
 		const settings = new SettingsStore();
@@ -27,7 +25,6 @@ export class SitegeistAppStorage extends BaseAppStorage {
 		const skills = new SkillsStore();
 		const costs = new CostStore();
 		const schedule = new ScheduleStore();
-		const executionLogs = new ExecutionLogStore();
 
 		const configs = [
 			settings.getConfig(),
@@ -38,12 +35,11 @@ export class SitegeistAppStorage extends BaseAppStorage {
 			skills.getConfig(),
 			costs.getConfig(),
 			schedule.getConfig(),
-			executionLogs.getConfig(),
 		];
 
 		const backend = new IndexedDBStorageBackend({
 			dbName: "sitegeist-storage",
-			version: 4,
+			version: 5,
 			stores: configs,
 		});
 
@@ -54,14 +50,12 @@ export class SitegeistAppStorage extends BaseAppStorage {
 		skills.setBackend(backend);
 		costs.setBackend(backend);
 		schedule.setBackend(backend);
-		executionLogs.setBackend(backend);
 
 		super(settings, providerKeys, sessions, customProviders, backend);
 
 		this.skills = skills;
 		this.costs = costs;
 		this.schedule = schedule;
-		this.executionLogs = executionLogs;
 	}
 }
 

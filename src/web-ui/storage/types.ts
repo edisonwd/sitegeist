@@ -138,6 +138,12 @@ export interface SessionMetadata {
 	 * Tool calls and tool results are excluded.
 	 */
 	preview: string;
+
+	/** Source of the session (e.g. "scheduled" for scheduled task executions) */
+	source?: string;
+
+	/** ID of the scheduled task that created this session */
+	taskId?: string;
 }
 
 /**
@@ -165,6 +171,12 @@ export interface SessionData {
 
 	/** ISO 8601 UTC timestamp of last modification */
 	lastModified: string;
+
+	/** Source of the session (e.g. "scheduled" for scheduled task executions) */
+	source?: string;
+
+	/** ID of the scheduled task that created this session */
+	taskId?: string;
 }
 
 /**
