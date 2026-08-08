@@ -2,6 +2,11 @@ import { getBuiltinModel } from "@earendil-works/pi-ai/providers/all";
 import { isOAuthCredentials, resolveApiKey } from "./oauth/index.js";
 import { getNextCronTime } from "./scheduler/cron-parser.js";
 import { sendTaskNotification } from "./scheduler/notifications.js";
+import {
+	calculateCumulativeUsage,
+	formatScheduledTaskTitle,
+	generateSessionPreview,
+} from "./scheduler/session-utils.js";
 import type { ScheduledTask, TaskExecutionResult } from "./scheduler/types.js";
 import { alarmNameForTask, taskIdFromAlarmName } from "./scheduler/types.js";
 import type { LockedSessionsMessage, LockResultMessage, SidepanelToBackgroundMessage } from "./utils/port.js";
@@ -247,6 +252,216 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 			});
 		return true;
 	}
+
+	// ============================================================================
+	// Offscreen document message handlers
+	// ============================================================================
+
+	if (message.type === "offscreen-get-tab") {
+		chrome.tabs
+			.get(message.tabId)
+			.then((tab) => {
+				sendResponse({
+					success: true,
+					tab: {
+						id: tab.id || 0,
+						url: tab.url || "",
+						title: tab.title || "",
+						active: tab.active || false,
+						windowId: tab.windowId,
+					},
+				});
+			})
+			.catch((error) => {
+				sendResponse({ success: false, error: String(error) });
+			});
+		return true;
+	}
+
+	if (message.type === "offscreen-update-tab") {
+		const updateProperties: chrome.tabs.UpdateProperties = {};
+		if (message.url !== undefined) updateProperties.url = message.url;
+		if (message.active !== undefined) updateProperties.active = message.active;
+
+		chrome.tabs
+			.update(message.tabId, updateProperties)
+			.then((tab) => {
+				sendResponse({
+					success: true,
+					tab: tab
+						? {
+								id: tab.id || 0,
+								url: tab.url || "",
+								title: tab.title || "",
+								active: tab.active || false,
+								windowId: tab.windowId,
+							}
+						: undefined,
+				});
+			})
+			.catch((error) => {
+				sendResponse({ success: false, error: String(error) });
+			});
+		return true;
+	}
+
+	if (message.type === "offscreen-create-tab") {
+		chrome.tabs
+			.create({ url: message.url, active: message.active })
+			.then((tab) => {
+				sendResponse({
+					success: true,
+					tabId: tab.id,
+				});
+			})
+			.catch((error) => {
+				sendResponse({ success: false, error: String(error) });
+			});
+		return true;
+	}
+
+	if (message.type === "offscreen-query-tabs") {
+		chrome.tabs
+			.query({})
+			.then((tabs) => {
+				sendResponse({
+					success: true,
+					tabs: tabs.map((t) => ({
+						id: t.id || 0,
+						url: t.url || "",
+						title: t.title || "",
+						active: t.active || false,
+						windowId: t.windowId,
+					})),
+				});
+			})
+			.catch((error) => {
+				sendResponse({ success: false, error: String(error) });
+			});
+		return true;
+	}
+
+	if (message.type === "offscreen-focus-window") {
+		chrome.windows
+			.update(message.windowId, { focused: true })
+			.then(() => {
+				sendResponse({ success: true });
+			})
+			.catch((error) => {
+				sendResponse({ success: false, error: String(error) });
+			});
+		return true;
+	}
+
+	if (message.type === "offscreen-execute-script") {
+		const executeCode = (userCode: string): { success: boolean; value?: string; error?: string; logs?: string[] } => {
+			const logs: string[] = [];
+			const origLog = console.log;
+			const origWarn = console.warn;
+			const origError = console.error;
+			const origInfo = console.info;
+			const fmt = (a: unknown[]): string =>
+				a
+					.map((v) =>
+						typeof v === "string"
+							? v
+							: (() => {
+									try {
+										return JSON.stringify(v);
+									} catch {
+										return String(v);
+									}
+								})(),
+					)
+					.join(" ");
+
+			console.log = (...a: unknown[]) => {
+				logs.push(fmt(a));
+				origLog(...a);
+			};
+			console.warn = (...a: unknown[]) => {
+				logs.push("[warn] " + fmt(a));
+				origWarn(...a);
+			};
+			console.error = (...a: unknown[]) => {
+				logs.push("[error] " + fmt(a));
+				origError(...a);
+			};
+			console.info = (...a: unknown[]) => {
+				logs.push("[info] " + fmt(a));
+				origInfo(...a);
+			};
+
+			try {
+				// eslint-disable-next-line no-new-func
+				const userFn = new Function(`return (async () => { ${userCode} })()`) as () => Promise<unknown>;
+				const value = userFn();
+
+				if (value && typeof (value as Promise<unknown>).then === "function") {
+					return (value as Promise<unknown>).then(
+						(resolved) => {
+							console.log = origLog;
+							console.warn = origWarn;
+							console.error = origError;
+							console.info = origInfo;
+							return {
+								success: true,
+								value:
+									resolved === undefined
+										? ""
+										: typeof resolved === "string"
+											? resolved
+											: JSON.stringify(resolved, null, 2),
+								logs,
+							};
+						},
+						(err: Error) => {
+							console.log = origLog;
+							console.warn = origWarn;
+							console.error = origError;
+							console.info = origInfo;
+							return { success: false, error: err?.message || String(err), logs };
+						},
+					) as unknown as { success: boolean; value?: string; error?: string; logs?: string[] };
+				}
+
+				console.log = origLog;
+				console.warn = origWarn;
+				console.error = origError;
+				console.info = origInfo;
+				return {
+					success: true,
+					value: value === undefined ? "" : typeof value === "string" ? value : JSON.stringify(value, null, 2),
+					logs,
+				};
+			} catch (err: unknown) {
+				console.log = origLog;
+				console.warn = origWarn;
+				console.error = origError;
+				console.info = origInfo;
+				return { success: false, error: err instanceof Error ? err.message : String(err), logs };
+			}
+		};
+
+		chrome.scripting
+			.executeScript({
+				target: { tabId: message.tabId, allFrames: false },
+				world: "MAIN" as any,
+				func: executeCode,
+				args: [message.code],
+			})
+			.then((results) => {
+				sendResponse({
+					success: true,
+					result: results[0]?.result,
+				});
+			})
+			.catch((error) => {
+				sendResponse({ success: false, error: String(error) });
+			});
+		return true;
+	}
+
 	return false;
 });
 
@@ -441,68 +656,12 @@ async function saveTaskSession(
 		});
 	}
 
-	const statusLabel = status === "success" ? "" : ` [${status}]`;
-	const title = `${task.name}${statusLabel} - ${now}`;
+	const title = formatScheduledTaskTitle(task.name, status, now);
 
 	console.log(`[Scheduler] Saving session: status=${status}, messages=${messages.length}, title="${title}"`);
 
-	// Calculate cumulative usage from assistant messages
-	const usage = {
-		input: 0,
-		output: 0,
-		cacheRead: 0,
-		cacheWrite: 0,
-		totalTokens: 0,
-		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-	};
-
-	for (const msg of agentMsgs) {
-		const m = msg as { role: string; usage?: typeof usage };
-		if (m.role === "assistant" && m.usage) {
-			usage.input += m.usage.input || 0;
-			usage.output += m.usage.output || 0;
-			usage.cacheRead += m.usage.cacheRead || 0;
-			usage.cacheWrite += m.usage.cacheWrite || 0;
-			usage.totalTokens +=
-				(m.usage.input || 0) + (m.usage.output || 0) + (m.usage.cacheRead || 0) + (m.usage.cacheWrite || 0);
-			if (m.usage.cost) {
-				usage.cost.input += m.usage.cost.input || 0;
-				usage.cost.output += m.usage.cost.output || 0;
-				usage.cost.cacheRead += m.usage.cost.cacheRead || 0;
-				usage.cost.cacheWrite += m.usage.cost.cacheWrite || 0;
-				usage.cost.total += m.usage.cost.total || 0;
-			}
-		}
-	}
-
-	// Generate preview text (first 2KB of conversation)
-	let preview = "";
-	for (const msg of messages) {
-		if (preview.length >= 2048) break;
-		const m = msg as { role: string; content: unknown };
-		if (m.role === "user") {
-			const content = m.content;
-			if (typeof content === "string") {
-				preview += `${content}\n`;
-			} else if (Array.isArray(content)) {
-				preview += content
-					.filter((block: { type?: string }) => block.type === "text")
-					.map((block: { text?: string }) => block.text || "")
-					.join("\n");
-				preview += "\n";
-			}
-		} else if (m.role === "assistant") {
-			const content = m.content;
-			if (Array.isArray(content)) {
-				preview += content
-					.filter((block: { type?: string }) => block.type === "text")
-					.map((block: { text?: string }) => block.text || "")
-					.join("\n");
-			}
-			preview += "\n";
-		}
-	}
-	preview = preview.substring(0, 2048);
+	const usage = calculateCumulativeUsage(agentMsgs);
+	const preview = generateSessionPreview(messages);
 
 	const sessionData = {
 		id: sessionId,
@@ -670,8 +829,21 @@ async function runTaskInOffscreen(task: ScheduledTask): Promise<TaskExecutionRes
 				reasons: ["WORKERS"] as any,
 				justification: "Scheduled task execution",
 			});
-			// Give the offscreen document time to initialize
-			await new Promise((resolve) => setTimeout(resolve, 500));
+			// Wait for offscreen document to signal readiness
+			await new Promise<void>((resolve) => {
+				const readyListener = (message: any) => {
+					if (message.type === "offscreen-ready") {
+						chrome.runtime.onMessage.removeListener(readyListener);
+						resolve();
+					}
+				};
+				chrome.runtime.onMessage.addListener(readyListener);
+				// Timeout after 5 seconds
+				setTimeout(() => {
+					chrome.runtime.onMessage.removeListener(readyListener);
+					resolve();
+				}, 5000);
+			});
 		}
 	} catch (error) {
 		// Clean up tab if offscreen document creation fails
@@ -724,7 +896,9 @@ async function runTaskInOffscreen(task: ScheduledTask): Promise<TaskExecutionRes
 				chrome.runtime.onMessage.removeListener(listener);
 				cleanupTab();
 				resolve(message.result as TaskExecutionResult);
+				return true;
 			}
+			return false;
 		}
 
 		chrome.runtime.onMessage.addListener(listener);

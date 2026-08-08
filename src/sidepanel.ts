@@ -35,6 +35,7 @@ import { registerUserMessageRenderer } from "./messages/UserMessageRenderer.js";
 import { createWelcomeMessage, registerWelcomeRenderer } from "./messages/WelcomeMessage.js";
 import { isOAuthCredentials, resolveApiKey } from "./oauth/index.js";
 import { SYSTEM_PROMPT } from "./prompts/prompts.js";
+import { calculateCumulativeUsage, generateSessionPreview } from "./scheduler/session-utils.js";
 import { getSitegeistStorage, SitegeistAppStorage } from "./storage/app-storage.js";
 import { DebuggerTool } from "./tools/debugger.js";
 import { ExtractImageTool, registerExtractImageRenderer } from "./tools/extract-image.js";
@@ -276,55 +277,8 @@ const saveSession = async () => {
 	if (!shouldSaveSession(state.messages)) return;
 
 	try {
-		// Calculate cumulative usage from all assistant messages
-		const usage = {
-			input: 0,
-			output: 0,
-			cacheRead: 0,
-			cacheWrite: 0,
-			totalTokens: 0,
-			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-		};
-
-		for (const msg of state.messages) {
-			if (msg.role === "assistant") {
-				usage.input += msg.usage.input;
-				usage.output += msg.usage.output;
-				usage.cacheRead += msg.usage.cacheRead;
-				usage.cacheWrite += msg.usage.cacheWrite;
-				usage.totalTokens += msg.usage.input + msg.usage.output + msg.usage.cacheRead + msg.usage.cacheWrite;
-				if (msg.usage.cost) {
-					usage.cost.input += msg.usage.cost.input;
-					usage.cost.output += msg.usage.cost.output;
-					usage.cost.cacheRead += msg.usage.cost.cacheRead;
-					usage.cost.cacheWrite += msg.usage.cost.cacheWrite;
-					usage.cost.total += msg.usage.cost.total;
-				}
-			}
-		}
-
-		// Generate preview text (first 2KB of user + assistant text)
-		let preview = "";
-		for (const msg of state.messages) {
-			if (preview.length >= 2048) break;
-			if (msg.role === "user") {
-				const text =
-					typeof msg.content === "string"
-						? msg.content
-						: msg.content
-								.filter((c) => c.type === "text")
-								.map((c) => c.text)
-								.join("\n") || "";
-				preview += `${text}\n`;
-			} else if (msg.role === "assistant") {
-				const text = msg.content
-					.filter((c) => c.type === "text" || c.type === "thinking")
-					.map((c) => (c.type === "text" ? c.text : c.thinking))
-					.join("\n");
-				preview += `${text}\n`;
-			}
-		}
-		preview = preview.substring(0, 2048);
+		const usage = calculateCumulativeUsage(state.messages);
+		const preview = generateSessionPreview(state.messages);
 
 		// Preserve createdAt if session already exists
 		const existingMetadata = await storage.sessions.getMetadata(currentSessionId);
