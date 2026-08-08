@@ -1,5 +1,5 @@
 import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
-import type { ImageContent, TextContent, ToolResultMessage } from "@earendil-works/pi-ai/compat";
+import type { ImageContent, TextContent, ToolResultMessage } from "@earendil-works/pi-ai";
 import { type Static, Type } from "@sinclair/typebox";
 import { html } from "lit";
 import { Image as ImageIcon } from "lucide";

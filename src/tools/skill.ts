@@ -1,6 +1,6 @@
 import "@mariozechner/mini-lit/dist/MarkdownBlock.js";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
-import { StringEnum, type ToolResultMessage } from "@earendil-works/pi-ai/compat";
+import { StringEnum, type ToolResultMessage } from "@earendil-works/pi-ai";
 import { icon } from "@mariozechner/mini-lit";
 import { Diff } from "@mariozechner/mini-lit/dist/Diff.js";
 import i18n from "@mariozechner/mini-lit/dist/i18n.js";

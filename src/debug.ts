@@ -1,4 +1,4 @@
-import { getModel } from "@earendil-works/pi-ai/compat";
+import { getBuiltinModel } from "@earendil-works/pi-ai/providers/all";
 import { Button } from "@mariozechner/mini-lit/dist/Button.js";
 import { icon } from "@mariozechner/mini-lit/dist/icons.js";
 import { Switch } from "@mariozechner/mini-lit/dist/Switch.js";
@@ -15,10 +15,10 @@ interface TestPrompt {
 }
 
 const models = [
-	getModel("anthropic", "claude-sonnet-4-5-20250929"),
-	getModel("openai", "gpt-5-codex"),
-	getModel("google", "gemini-2.5-pro"),
-	getModel("openrouter", "z-ai/glm-4.6"),
+	getBuiltinModel("anthropic", "claude-sonnet-4-5-20250929"),
+	getBuiltinModel("openai", "gpt-5-codex"),
+	getBuiltinModel("google", "gemini-2.5-pro"),
+	getBuiltinModel("openrouter", "z-ai/glm-4.6"),
 ];
 
 // Initialize AppStorage so tools relying on Sitegeist storage can operate in debug page

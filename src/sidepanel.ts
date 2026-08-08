@@ -10,7 +10,8 @@ import {
 	type AgentState,
 	type AgentTool,
 } from "@earendil-works/pi-agent-core";
-import { getModel, getModels, type Model } from "@earendil-works/pi-ai/compat";
+import type { Model } from "@earendil-works/pi-ai";
+import { getBuiltinModel, getBuiltinModels } from "@earendil-works/pi-ai/providers/all";
 import { html, render } from "lit";
 import { History, Plus, Settings } from "lucide";
 import { AboutTab } from "./dialogs/AboutTab.js";
@@ -156,7 +157,7 @@ async function selectDefaultModelForAvailableProvider() {
 	for (const provider of providers) {
 		const modelId = DEFAULT_MODELS[provider];
 		if (modelId) {
-			const model = getModel(provider as any, modelId);
+			const model = getBuiltinModel(provider as any, modelId);
 			if (model) {
 				agent.state.model = model;
 				await storage.settings.set("lastUsedModel", model);
@@ -169,7 +170,7 @@ async function selectDefaultModelForAvailableProvider() {
 
 	// If no default found, try the first model for the first provider with a key
 	for (const provider of providers) {
-		const models = getModels(provider as any);
+		const models = getBuiltinModels(provider as any);
 		if (models.length > 0) {
 			agent.state.model = models[0];
 			await storage.settings.set("lastUsedModel", models[0]);
@@ -397,7 +398,7 @@ const createAgent = async (initialState?: Partial<AgentState>, shouldSave = true
 			for (const provider of providersWithKeys) {
 				const modelId = DEFAULT_MODELS[provider];
 				if (modelId) {
-					const model = getModel(provider as any, modelId);
+					const model = getBuiltinModel(provider as any, modelId);
 					if (model) {
 						defaultModel = model;
 						break;
@@ -423,7 +424,7 @@ const createAgent = async (initialState?: Partial<AgentState>, shouldSave = true
 
 	// Final fallback
 	if (!defaultModel && !initialState?.model) {
-		defaultModel = getModel("anthropic", "claude-sonnet-4-6");
+		defaultModel = getBuiltinModel("anthropic", "claude-sonnet-4-6");
 	}
 
 	agent = new Agent({
@@ -880,7 +881,7 @@ async function testSteps(): Promise<boolean> {
 		// Set model if specified
 		let initialState: Partial<AgentState> | undefined;
 		if (testProvider && testModel) {
-			const model = getModel(testProvider as any, testModel);
+			const model = getBuiltinModel(testProvider as any, testModel);
 			if (model) {
 				initialState = {
 					systemPrompt: SYSTEM_PROMPT,

@@ -1,354 +1,260 @@
-# Scheduled Tasks Design
+# 定时任务设计文档
 
-## Overview
+## 概述
 
-A general-purpose task scheduler for sitegeist that lets users schedule any Agent web operation (navigate, fill forms, extract data, run JS, etc.) to execute at a specific time or on a recurring schedule. Tasks are persisted in IndexedDB and executed via Chrome's alarm API with an Offscreen Document runtime.
+sitegeist 的通用任务调度系统，允许用户调度任意 Agent 网页操作（导航、填写表单、提取数据、执行 JS 等）在指定时间或按周期性计划执行。任务元数据持久化在 IndexedDB 中，通过 Chrome alarms API 触发调度，支持两种执行模式：前台（Sidepanel 带流式 UI）和后台（Offscreen Document 回退）。
 
-## Architecture
+## 架构
 
 ```
-User Side Panel                    Background (Service Worker)              Offscreen Document
-+---------------+                 +----------------------+               +------------------+
-| Scheduled     |--create task-->| Scheduler            |               |                  |
-| Tasks Tab     |<--manage list--| (alarm CRUD)         |--alarm fire-->| Agent Runtime    |
-|               |                 |                      |               | (reuses sidepanel|
-| Task Editor   |                 | Result Logger        |<--result------|  Agent logic)    |
-|               |                 | (IndexedDB)          |               |                  |
-|               |                 |                      |--chrome.tabs-->| Operates target  |
-|               |                 | Notification         |               | tab (bg/visible) |
-|               |                 | Manager              |               |                  |
-+---------------+                 +----------------------+               +------------------+
+用户 Side Panel                    Background (Service Worker)              执行层
++---------------+                 +----------------------+               +------------------------+
+| Scheduled     |--创建任务------->| Scheduler             |               | 前台: Sidepanel Agent  |
+| Tasks Tab     |<--管理列表-------| (alarm CRUD)          |--alarm 触发-->| (带流式 UI 输出)       |
+|               |                 |                      |               |                        |
+| Task Editor   |                 | IndexedDB 直连        |--前台优先---->| 后台: Offscreen Agent  |
+|               |                 | (任务/会话读写)        |--回退-------->| (无 UI, 后台运行)      |
+| History       |                 |                      |               |                        |
+| Dialog        |                 | 通知管理器             |<-任务结果-----| 操作目标标签页         |
++---------------+                 +----------------------+               +------------------------+
 ```
 
-**Core flow:**
-1. User creates/edits a scheduled task in the Side Panel Scheduled Tasks Tab (natural language description + schedule rule)
-2. On save, `chrome.alarms.create()` registers the alarm; task metadata stored in IndexedDB
-3. Alarm fires -> Service Worker receives `chrome.alarms.onAlarm` callback
-4. Service Worker creates an Offscreen Document, passing task config
-5. Offscreen Document runs Agent (reusing sidepanel Agent construction logic), creates target tab to execute operations
-6. Execution completes: results written to IndexedDB, Chrome Notification sent, tab and Offscreen Document closed
+**核心流程：**
 
-**Key design decisions:**
-- Offscreen Document lifecycle managed by Service Worker; closed after task completes
-- Only one scheduled task executes at a time (queued) to avoid resource contention
-- Service Worker restores alarm registrations from IndexedDB on restart
+1. 用户在 Side Panel 设置面板的"定时任务"标签页中创建/编辑任务（自然语言描述 + 调度规则）
+2. 保存时通过 `chrome.runtime.sendMessage` 通知 Service Worker 注册 `chrome.alarms.create()`；任务元数据写入 IndexedDB
+3. Alarm 触发 -> Service Worker 收到 `chrome.alarms.onAlarm` 回调
+4. Service Worker **优先尝试前台执行**：检查是否有打开的 Sidepanel，若有则发送任务消息，Sidepanel 创建会话并以流式方式运行 Agent
+5. **若无 Sidepanel 打开**：回退到 Offscreen Document 执行，Service Worker 创建目标标签页和 Offscreen Document，Offscreen 内运行 Agent
+6. 执行完成后：结果写入 IndexedDB 的 sessions 存储（同一套会话系统），发送 Chrome 通知，清理标签页和 Offscreen Document
 
-## Data Model
+**关键设计决策：**
 
-### ScheduledTask (metadata, stored in IndexedDB)
+- **前台优先策略**：有 Sidepanel 打开时优先在 Sidepanel 中执行（用户可实时看到 Agent 流式输出），无 Sidepanel 时才回退到 Offscreen Document
+- **串行执行队列**：同一时间只执行一个定时任务（`isExecuting` + `pendingQueue`），避免资源争用
+- **Service Worker 独立访问 IndexedDB**：background.ts 直接打开 IndexedDB 连接（绕过 Store 抽象层），使其可独立于 Sidepanel 运行
+- **Service Worker 重启恢复**：启动时从 IndexedDB 读取所有启用任务并恢复 alarm 注册
+
+## 数据模型
+
+### ScheduledTask（任务元数据，存储在 IndexedDB `scheduled_tasks` 表）
 
 ```typescript
 interface ScheduledTask {
   id: string;                    // UUID
-  name: string;                  // User-defined task name
-  description: string;           // Natural language task description (user-editable)
-  promptTemplate: string;        // Full prompt passed to Agent (based on description + system context)
+  name: string;                  // 用户自定义任务名称
+  description: string;           // 自然语言任务描述（用户可编辑）
+  promptTemplate: string;        // 传递给 Agent 的完整提示词（基于 description + 系统上下文）
 
-  // Schedule rule
+  // 调度规则
   schedule: ScheduleConfig;
 
-  // Execution config
-  executionMode: "silent" | "visible";  // silent/visible
-  targetUrl?: string;                   // Optional target URL (Agent starts from this URL)
+  // 执行配置
+  executionMode: "silent" | "visible";  // silent（后台标签页）/ visible（前台标签页）
+  model?: Model<any>;                    // 可选的指定 AI 模型（不设置则使用上次选择的模型）
+  targetUrl?: string;                    // 可选的目标 URL（Agent 从此 URL 开始操作）
 
-  // State
+  // 状态
   enabled: boolean;
-  lastRunAt?: string;            // ISO timestamp
+  lastRunAt?: string;            // ISO 时间戳
   lastRunStatus?: "success" | "failed" | "timeout";
-  nextRunAt?: string;            // ISO timestamp
+  lastSessionId?: string;        // 最近一次执行产生的会话 ID
+  nextRunAt?: string;            // ISO 时间戳
   createdAt: string;
   updatedAt: string;
 }
 
 type ScheduleConfig =
-  | { type: "once"; at: string }           // ISO timestamp, one-time
-  | { type: "interval"; minutes: number }  // Every N minutes (minimum 1)
-  | { type: "cron"; expression: string };  // Simplified cron expression
+  | { type: "once"; at: string }           // ISO 时间戳，一次性执行
+  | { type: "interval"; minutes: number }  // 每 N 分钟执行一次（最少 1 分钟）
+  | { type: "cron"; expression: string };  // 简化的 5 字段 cron 表达式
 ```
 
-### TaskExecutionLog (execution records, stored in IndexedDB)
+### TaskExecutionResult（执行结果，进程间传递用）
 
 ```typescript
-interface TaskExecutionLog {
-  id: string;                    // UUID
-  taskId: string;                // Associated ScheduledTask.id
-  startedAt: string;             // ISO timestamp
-  finishedAt?: string;           // ISO timestamp
-  status: "running" | "success" | "failed" | "timeout";
-  error?: string;                // Failure reason
-  summary?: string;              // Brief summary from Agent execution
-  agentMessages: AgentMessage[]; // Complete Agent conversation log (for debugging)
+interface TaskExecutionResult {
+  status: "success" | "failed" | "timeout";
+  error?: string;                // 失败原因
+  summary?: string;              // 简要总结
+  agentMessages: AgentMessage[]; // Agent 对话消息列表
 }
 ```
 
-**Design notes:**
-- `promptTemplate` separated from `description`: `description` is user-facing, `promptTemplate` is the actual instruction passed to Agent, supports user fine-tuning
-- `ScheduleConfig` uses union type to support three scheduling modes
-- `TaskExecutionLog` preserves complete Agent conversation for user debugging
-- Cron expressions use simplified format (e.g., `0 9 * * 1` = every Monday at 9:00), no external library required
+### 执行历史（复用现有 sessions 存储系统）
 
-## Scheduling Mechanism
+执行历史**不使用独立的存储表**，而是复用现有的 `sessions` 和 `sessions-metadata` IndexedDB 表。每次任务执行创建一个会话记录，通过以下字段区分：
 
-### Alarm Naming Convention
+- `source: "scheduled"` — 标记为定时任务产生的会话
+- `taskId: string` — 关联的 ScheduledTask.id
+- 会话标题格式：`{任务名} [{状态}] - {时间}`（成功时省略状态标签）
 
-Each scheduled task maps to a `chrome.alarms.Alarm` with naming pattern: `scheduled-task:${taskId}`. When Service Worker receives `onAlarm`, it parses the alarm name to locate the task.
+`SessionMetadata` 扩展字段：
 
-### Scheduling Lifecycle
+```typescript
+interface SessionMetadata {
+  // ... 现有字段 ...
+  source?: string;     // "scheduled" 表示定时任务产生的会话
+  taskId?: string;     // 关联的定时任务 ID
+}
+```
+
+**设计说明：**
+
+- `promptTemplate` 与 `description` 分离：`description` 面向用户，`promptTemplate` 是实际传递给 Agent 的指令，支持用户微调
+- `ScheduleConfig` 使用联合类型支持三种调度模式
+- `model` 字段允许每个任务指定不同的 AI 模型，未设置时使用系统默认模型
+- `lastSessionId` 用于快速跳转到最近一次执行的会话详情
+- 执行历史复用 sessions 系统，用户可在会话列表中查看所有定时任务的执行记录，点击即可查看完整 Agent 对话
+
+## 调度机制
+
+### Alarm 命名规则
+
+每个定时任务对应一个 `chrome.alarms.Alarm`，命名格式：`scheduled-task:${taskId}`。Service Worker 收到 `onAlarm` 时解析 alarm 名称获取任务 ID。
+
+### 调度生命周期
 
 ```
-Create Task
+创建任务
   |-- schedule.type === "once"
   |     chrome.alarms.create(`scheduled-task:${id}`, { when: new Date(schedule.at).getTime() })
+  |     * 若时间已过期则拒绝创建
   |
   |-- schedule.type === "interval"
-  |     chrome.alarms.create(`scheduled-task:${id}`, { periodInMinutes: schedule.minutes })
+  |     chrome.alarms.create(`scheduled-task:${id}`, { periodInMinutes: Math.max(minutes, 1) })
   |
   +-- schedule.type === "cron"
-        Parse cron expression, calculate next trigger time
-        chrome.alarms.create(`scheduled-task:${id}`, { when: nextTriggerTime, periodInMinutes: 1440 })
-        (After alarm fires, recalculate next cron time and update alarm)
+        解析 cron 表达式，计算下次触发时间
+        chrome.alarms.create(`scheduled-task:${id}`, { when: nextTime.getTime() })
 
-Alarm fires (chrome.alarms.onAlarm)
-  |-- Parse alarm.name, extract taskId
-  |-- Read ScheduledTask from IndexedDB
-  |-- Check task.enabled; skip if disabled
-  |-- Check if task is already running (prevent concurrency); skip if running
-  |-- Create TaskExecutionLog record (status: "running")
-  |-- Call TaskExecutor to run task
-  |     |-- Success: update log.status = "success", notify user
-  |     |-- Failure: update log.status = "failed", record error, notify user
-  |     +-- Timeout: update log.status = "timeout" (default 10 minutes)
-  |-- Update task.lastRunAt / task.lastRunStatus
-  |-- If "once" type: set task.enabled = false
-  +-- If "cron" type: recalculate next trigger time, update alarm
+Alarm 触发
+  |-- 检查 isExecuting
+  |     若正在执行 -> 加入 pendingQueue
+  |     否则 -> executeTaskById(taskId)
+  |
+  |-- 前台执行（有 Sidepanel）
+  |     创建目标标签页 -> 发送 execute-scheduled-task 消息到 Sidepanel
+  |     Sidepanel 创建会话 -> 运行 Agent（带流式 UI）
+  |     完成后通过 scheduled-task-complete 消息回传结果
+  |
+  +-- 后台执行（无 Sidepanel，回退到 Offscreen）
+        创建目标标签页 -> 创建/复用 Offscreen Document
+        发送 execute-task 消息到 Offscreen -> Offscreen 运行 Agent
+        完成后通过 task-result 消息回传结果
 
-Service Worker startup
-  +-- Scan all enabled tasks in IndexedDB
-        +-- Check if corresponding alarm exists (chrome.alarms.get)
-              +-- If missing (Service Worker was restarted): re-register alarm
+执行后处理
+  |-- 更新任务状态（lastRunAt, lastRunStatus, lastSessionId）
+  |-- 更新调度
+  |     once -> 清除 alarm
+  |     cron -> 计算并注册下次触发的 alarm
+  |     interval -> 由 Chrome 自动周期触发，无需处理
+  |-- 发送 Chrome 通知
+  |-- 释放 power keepAwake
+  |-- 处理 pendingQueue 中的下一个任务
 ```
 
-### Execution Queue
+### Service Worker 启动恢复
 
-Only one task executes at a time. If a task is running when a new alarm fires, the new task enters a pending queue. When the current task completes, queued tasks execute in order. Queue state lives in Service Worker memory (task execution is within Service Worker lifecycle).
+Service Worker 启动时调用 `restoreAlarms()`：
+1. 直接打开 IndexedDB 连接读取所有任务
+2. 过滤出 `enabled === true` 的任务
+3. 对每个启用任务检查 alarm 是否已存在
+4. 若不存在则重新注册
 
-### Service Worker Keep-Awake
+## 执行流程详解
 
-During task execution, `chrome.power.requestKeepAwake("system")` prevents system sleep from terminating the Service Worker. After task completes, `chrome.power.releaseKeepAwake()` is called.
+### 前台执行（Sidepanel）
 
-### Error Recovery
+1. Service Worker 检查 `openSidepanels` 集合是否有打开的 Sidepanel
+2. 创建目标标签页（若有 `targetUrl`）
+3. 发送 `execute-scheduled-task` 消息到 Sidepanel，包含 taskId、sessionId、prompt、model 等
+4. Sidepanel 接收消息后：
+   - 导航到指定会话 URL（`?session=${sessionId}&scheduledTask=${taskId}`）
+   - 从 IndexedDB 加载任务元数据
+   - 构建系统提示词（`SYSTEM_PROMPT` + 定时任务上下文 + 任务描述）
+   - 创建 Agent 实例并运行（带流式 UI 输出）
+   - 完成后发送 `scheduled-task-complete` 消息回 Service Worker
+5. Service Worker 通过 `pendingForegroundTask` Promise 等待结果，超时 10 分钟
 
-- Service Worker restart automatically restores alarm registrations for all enabled tasks
-- If alarm fires when Service Worker cannot start (edge case), Chrome re-delivers on next Service Worker availability
-- Execution interrupted by Service Worker crash: on next startup, detect log records with `status: "running"` beyond threshold, auto-mark as `"failed"`
+### 后台执行（Offscreen Document）
 
-## Task Execution Layer
+1. 创建目标标签页（`task.targetUrl` 或 `about:blank`），`active` 取决于 `executionMode`
+2. 检查是否已存在 Offscreen Document，若不存在则创建（`offscreen.html`，reason: `WORKERS`）
+3. 等待 500ms 确保 Offscreen Document 初始化完成
+4. 解析代理配置（`proxy_enabled` / `proxy_url`）
+5. 发送 `execute-task` 消息到 Offscreen Document，包含 task、tabId、proxyUrl
+6. Offscreen Document：
+   - 构建调度器系统提示词
+   - 创建 Agent 实例（使用任务指定的 model 或默认模型）
+   - 通过 `chrome.runtime.sendMessage` 向 Service Worker 请求 API Key（`get-api-key` 消息）
+   - 运行 `agent.prompt(task.promptTemplate)`
+   - 监听 `message_end` 和 `agent_end` 事件
+   - 完成后发送 `task-result` 消息回 Service Worker
+7. Service Worker 监听 `task-result` 消息获取结果，超时 10 分钟
+8. silent 模式下清理标签页
 
-### Offscreen Document Creation and Communication
+## 用户界面
 
-```
-Service Worker                    Offscreen Document
-+---------------+                +------------------+
-| alarm fires   |                |                  |
-|               |--create------->| initialize       |
-|               |--message------>| receive config   |
-|               |   taskConfig   | build Agent      |
-|               |                | run Agent        |
-|               |<-progress------| Agent calls tools|
-|               |                | (navigate/repl)  |
-|               |<-result--------| execution done   |
-|               |--close-------->| self.close()     |
-+---------------+                +------------------+
-```
+### ScheduledTasksTab（任务列表标签页）
 
-**Offscreen Document lifecycle:**
-1. Service Worker calls `chrome.offscreen.createDocument()` with reason `"WORKERS"`
-2. Only one Offscreen Document can exist at a time; check before creating
-3. Task config passed via `chrome.runtime.sendMessage`
-4. After execution, Offscreen Document sends completion message then calls `self.close()`
+作为 `SettingsTab` 嵌入设置面板中，功能包括：
+- 任务列表展示：名称、调度规则、上次执行状态、下次执行时间、使用的模型
+- 创建任务：打开 TaskEditorDialog
+- 编辑任务：打开 TaskEditorDialog 并预填数据
+- 启用/禁用切换：更新任务状态并注册/移除 alarm
+- 删除任务：确认后删除任务和对应 alarm
+- 查看执行历史：打开 ScheduledTaskHistoryDialog
+- 空状态提示："暂无定时任务，创建定时任务以自动化网页操作"
 
-### Agent Execution Flow
+### TaskEditorDialog（任务编辑器对话框）
 
-```typescript
-// Runs inside Offscreen Document
-async function executeTask(task: ScheduledTask): Promise<TaskExecutionResult> {
-  // 1. Create target tab (silent mode uses active: false)
-  const tab = await chrome.tabs.create({
-    url: task.targetUrl || "about:blank",
-    active: task.executionMode === "visible"
-  });
+基于 `DialogBase` 的模态对话框，包含：
+- **任务名称**：文本输入框
+- **任务描述**：文本区域（自然语言描述）
+- **目标 URL**：可选的文本输入框
+- **调度类型**：三种模式的切换
+  - `once`：日期时间选择器
+  - `interval`：分钟数输入（最少 1 分钟）
+  - `cron`：预设按钮（每天 9:00、每小时、每周一 9:00、每月 1 号 9:00）+ 表达式输入框
+- **模型选择**：通过 ModelSelector 组件选择指定 AI 模型，支持"重置为默认"
+- **执行模式**：单选（Silent 后台运行 / Visible 前台运行）
+- **高级选项**：可展开区域，支持自定义 `promptTemplate`（默认等于 description，可覆盖；提供"重置为描述"按钮）
 
-  // 2. Build Agent (reuses sidepanel Agent construction logic)
-  const agent = new Agent({
-    tools: [
-      new NavigateTool(tab.id),
-      createReplTool(tab.id),
-      new DebuggerTool(tab.id),
-      new ExtractImageTool(tab.id),
-    ],
-    model: getStoredDefaultModel(),  // Uses user's default model config
-    systemPrompt: buildSchedulerSystemPrompt(task),
-  });
+### ScheduledTaskHistoryDialog（执行历史对话框）
 
-  // 3. Execute prompt
-  agent.start(task.promptTemplate);
+基于 `DialogBase` 的模态对话框，功能包括：
+- 从 `sessions-metadata` 表加载所有 `source === "scheduled"` 且 `taskId` 匹配的会话
+- 兼容旧数据：对无 `taskId` 字段的旧会话通过标题中的任务名进行匹配
+- 显示统计信息：总执行次数、成功/失败/超时次数
+- 每条记录显示：执行时间、状态标签（从标题中的 `[status]` 提取）、执行时长
+- 点击记录或"打开会话"按钮：导航到对应会话页面查看完整 Agent 对话
 
-  // 4. Wait for completion, collect messages
-  const messages: AgentMessage[] = [];
-  agent.subscribe((event) => {
-    if (event.type === "message") messages.push(event.message);
-    // Report progress to Service Worker via chrome.runtime.sendMessage
-  });
+### 通知
 
-  await agent.waitForCompletion({ timeout: 10 * 60 * 1000 }); // 10 min timeout
+使用 Chrome Notification API：
+- 任务成功：通知标题 `Task completed: {name}`
+- 任务失败：通知标题 `Task failed: {name}`，消息为错误原因
+- 任务超时：通知标题 `Task timed out: {name}`
+- 通知 ID 格式：`task-result-${sessionId}`
+- 通知 ID 与 sessionId 的映射存储在 `chrome.storage.session`（`notification_session_map`）
+- 点击通知：打开新标签页加载 `sidepanel.html?session=${sessionId}` 查看执行详情
 
-  // 5. Close tab (silent mode auto-closes)
-  if (task.executionMode === "silent") {
-    await chrome.tabs.remove(tab.id);
-  }
+## Manifest 变更
 
-  return { messages, status: agent.getFinalStatus() };
-}
-```
-
-### Key Design Decisions
-
-**Model and API key reuse:**
-- Offscreen Document runs in extension context, can access `chrome.storage` to read user-configured API keys and default model
-- Reuses sidepanel model resolution and API call logic
-
-**Agent toolset:**
-- Full reuse of sidepanel tools: `NavigateTool`, `replTool`, `DebuggerTool`, `ExtractImageTool`
-- Tools operate on target tab via `tab.id`, identical to sidepanel usage
-
-**Silent vs Visible mode:**
-- Silent: `chrome.tabs.create({ active: false })`, tab auto-closed after execution, user unaware
-- Visible: `chrome.tabs.create({ active: true })`, tab stays open, user sees execution and results
-
-**Timeout protection:**
-- Default 10-minute timeout per task
-- On timeout, Agent is aborted, tab closed, log recorded as `status: "timeout"`
-
-**promptTemplate construction:**
-- User's `description` (e.g., "open example.com and publish the article") wrapped into structured prompt
-- System prompt injects scheduler context: "You are executing a scheduled task. The target tab is open. Follow these instructions..."
-- User can fine-tune `promptTemplate` during task creation
-
-## User Interface
-
-### Side Panel Entry Point
-
-Add a "Scheduled Tasks" icon button (clock icon) in the top navigation bar alongside existing history, new session, and settings buttons. Clicking opens `ScheduledTasksDialog`.
-
-### ScheduledTasksDialog (main view)
-
-```
-+--------------------------------------+
-|  Scheduled Tasks             [+ New] |
-+--------------------------------------+
-|                                      |
-|  [enabled] Daily Article Publish     |
-|     Every day 09:00 / Last: success  |
-|     [Edit] [Pause] [Delete]          |
-|                                      |
-|  [pending] Extract Competitor Data   |
-|     (one-time) 2026-08-10 14:00      |
-|     [Edit] [Delete]                  |
-|                                      |
-|  [failed] Weekly Report Summary      |
-|     Every Monday 09:00 / Last: fail  |
-|     [View Log] [Edit] [Delete]       |
-|                                      |
-+--------------------------------------+
-|  [Execution History]                  |
-+--------------------------------------+
-```
-
-### TaskEditorDialog (create/edit task)
-
-Step form:
-
-```
-+--------------------------------------+
-|  New Scheduled Task                   |
-+--------------------------------------+
-|                                      |
-|  Task Name:                          |
-|  [________________________]          |
-|                                      |
-|  Task Description (natural language):|
-|  [________________________]          |
-|  [________________________]          |
-|  [________________________]          |
-|                                      |
-|  Target URL (optional):              |
-|  [________________________]          |
-|                                      |
-|  Schedule Rule:                      |
-|  o One-time  o Interval  o Cron      |
-|                                      |
-|  [One-time shows:]                   |
-|  Execution Time: [2026-08-10 14:00]  |
-|                                      |
-|  [Interval shows:]                   |
-|  Every [__] minutes (min 1)          |
-|                                      |
-|  [Cron shows:]                       |
-|  Cron Expression: [0 9 * * 1]        |
-|  Help: min hour day month weekday    |
-|                                      |
-|  Execution Mode:                     |
-|  o Silent (background, invisible)    |
-|  o Visible (open tab)                |
-|                                      |
-|           [Cancel]        [Save]     |
-+--------------------------------------+
-```
-
-**Interaction flow:**
-- User enters natural language in "Task Description" (e.g., "open example.com, fill the article editor and publish")
-- On save, system uses `description` as `promptTemplate` base; user can fine-tune in advanced options
-- Cron expression provides preset dropdown: "Every day 9:00", "Every Monday", "1st of each month"; selection auto-fills the expression field
-
-### ExecutionHistoryDialog (execution history)
-
-```
-+--------------------------------------+
-|  History - Daily Article Publish      |
-+--------------------------------------+
-|                                      |
-|  2026-08-07 09:00  Success  03:24    |
-|  [View Details]                       |
-|                                      |
-|  2026-08-06 09:00  Success  02:58    |
-|  [View Details]                       |
-|                                      |
-|  2026-08-05 09:00  Failed   00:45    |
-|  [View Details]                       |
-|                                      |
-+--------------------------------------+
-```
-
-Click "View Details" to expand full record showing `summary` (Agent summary) and `agentMessages` (complete conversation log, collapsible per step).
-
-### Notifications
-
-Uses Chrome Notification API:
-- Task success: brief notification + "View Details" button navigates to execution history
-- Task failure/timeout: warning notification + failure reason summary
-- Clicking notification opens side panel to the relevant task execution history page
-
-### Empty State
-
-When no scheduled tasks exist, display guidance: "No scheduled tasks yet. Create a task to let the Agent complete web operations on schedule."
-
-## Manifest Changes
-
-Add the following permissions to `static/manifest.chrome.json`:
+`static/manifest.chrome.json` 已添加以下权限：
 
 ```json
 "permissions": [
-  // ... existing permissions ...
+  "storage",
+  "unlimitedStorage",
+  "activeTab",
+  "scripting",
+  "sidePanel",
+  "userScripts",
+  "webNavigation",
+  "debugger",
+  "declarativeNetRequest",
   "alarms",
   "offscreen",
   "notifications",
@@ -356,49 +262,76 @@ Add the following permissions to `static/manifest.chrome.json`:
 ]
 ```
 
-## File Structure
+## 文件结构
 
 ```
 src/
   scheduler/
-    types.ts                  # ScheduledTask, TaskExecutionLog, ScheduleConfig types
-    schedule-store.ts         # IndexedDB store for scheduled tasks
-    execution-log-store.ts    # IndexedDB store for execution logs
-    scheduler.ts              # Alarm CRUD, alarm listener, execution queue
-    task-executor.ts          # Offscreen Document creation, Agent execution
-    cron-parser.ts            # Simplified cron expression parser
-    notifications.ts          # Chrome Notification helpers
+    types.ts                  # ScheduledTask, TaskExecutionResult, ScheduleConfig 类型及 alarm 名称工具函数
+    cron-parser.ts            # 5 字段 cron 表达式解析器、下次触发时间计算、可读化
+    schedule-store.ts         # IndexedDB Store：ScheduledTask 的 CRUD 操作
+    db-config.ts              # 调度器 Store schema 配置（确保前后端一致）
+    notifications.ts          # Chrome 通知发送及 session 映射管理
   offscreen/
-    offscreen.html            # Offscreen Document HTML entry
-    offscreen.ts              # Offscreen Document JS: receives config, runs Agent
+    offscreen.ts              # Offscreen Document JS：接收任务配置，构建并运行 Agent
   dialogs/
-    ScheduledTasksDialog.ts   # Main task list UI
-    TaskEditorDialog.ts       # Create/edit task form
-    ExecutionHistoryDialog.ts # Execution history UI
+    ScheduledTasksTab.ts      # 任务列表标签页（SettingsTab）
+    TaskEditorDialog.ts       # 创建/编辑任务表单（DialogBase）
+    ScheduledTaskHistoryDialog.ts  # 执行历史视图（DialogBase），基于 sessions 系统
+  storage/
+    app-storage.ts            # SitegeistAppStorage 注册 ScheduleStore，IndexedDB 版本 5
+  background.ts               # Service Worker：alarm 监听、调度逻辑、执行队列、前台/后台执行、恢复
+  sidepanel.ts                # Side Panel：ScheduledTasksTab 集成、前台任务执行处理
+scripts/
+  build.mjs                   # offscreen 入口点构建配置
+static/
+  manifest.chrome.json        # 扩展 manifest（alarms, offscreen, notifications, power 权限）
 ```
 
-## Testing Strategy
+## Cron 表达式
 
-- Unit tests for cron expression parsing (edge cases, timezone handling)
-- Integration test: create task -> verify alarm registered -> simulate alarm fire -> verify execution log created
-- Manual E2E: create a simple scheduled task, verify it executes at the scheduled time
+简化的 5 字段标准语法：`分钟 小时 日期 月份 星期`。支持范围（`1-5`）、列表（`1,3,5`）、步进（`*/2`）和通配符（`*`）。无秒字段，无特殊字符（`@yearly`、`@weekly` 等）。通过自定义解析器实现（约 100 行），无外部依赖。
 
-## Open Questions Resolved
+提供 `cronToHumanReadable()` 函数将常见表达式转为可读文本（如 `0 9 * * *` → "Every day at 09:00"）。
 
-### Cron Expression Scope
-The simplified cron supports 5-field standard syntax: `minute hour day-of-month month day-of-week`. Range, list, and step values are supported (e.g., `0 9,17 * * 1-5`, `*/30 * * * *`). No seconds field, no special characters (`@yearly`, `@weekly` etc.). Implementation via a minimal custom parser (~100 lines), no external dependency.
+## 消息协议
 
-### Agent API in Offscreen Document
-The current `Agent` class from `@earendil-works/pi-agent-core` uses a subscribe/event model. The "waitForCompletion" abstraction in the spec represents a wrapper that resolves when the Agent emits a terminal state event (complete/aborted/error). This wrapper is implemented as a utility function in `task-executor.ts`.
+各组件间通过 `chrome.runtime.sendMessage` 通信：
 
-### Model Configuration Access
-Offscreen Document accesses model configuration via `chrome.storage.local`, which stores the user's selected provider, model, and API key/OAuth credentials. The same resolution logic used in `sidepanel.ts` (via `resolveApiKey` and `getModel`) is extracted into a shared utility and imported by the Offscreen Document.
+| 消息类型 | 发送方 | 接收方 | 用途 |
+|---------|--------|--------|------|
+| `register-alarm` | Sidepanel | Background | 注册任务的 alarm |
+| `remove-alarm` | Sidepanel | Background | 移除任务的 alarm |
+| `get-api-key` | Offscreen | Background | 请求指定 provider 的 API Key |
+| `execute-scheduled-task` | Background | Sidepanel | 前台执行定时任务 |
+| `scheduled-task-complete` | Sidepanel | Background | 前台执行完成回报 |
+| `execute-task` | Background | Offscreen | 后台执行定时任务 |
+| `task-result` | Offscreen | Background | 后台执行结果回传 |
 
-### promptTemplate Advanced Editing
-The Task Editor includes an expandable "Advanced" section where users can directly edit the `promptTemplate` field. By default, `promptTemplate` equals `description`, but users can override it with more specific instructions. A "Reset to description" button restores the default.
+## 存储架构
 
-### Internationalization
-All user-facing strings in the UI (dialog titles, button labels, status text, empty states) use the existing i18n system (`@mariozechner/mini-lit/dist/i18n.js`). Chinese strings shown in mockups are reference text; actual implementation adds translation keys to `src/web-ui/utils/i18n.ts` for both English and Chinese.
+### IndexedDB（`sitegeist-storage`，版本 5）
 
-### Chrome Notification Permissions
-The `"notifications"` permission is added to the manifest. Chrome extensions do not require user permission prompts for notifications, but a toggle in Settings > Scheduled Tasks allows users to disable notifications for task results.
+`ScheduleStore` 注册在 `SitegeistAppStorage` 中：
+
+- **Store 名称**：`scheduled_tasks`
+- **Key Path**：`id`
+- **索引**：`enabled`（布尔值）、`createdAt`（时间戳）
+- **操作**：`get`、`save`、`delete`、`listAll`、`listEnabled`
+
+Background 中的 Service Worker 直接操作 IndexedDB（绕过 Store 抽象层），使用独立的 `openSchedulerDB()` 函数打开连接。`onupgradeneeded` 处理器创建所有 Store（包括 sessions、settings 等），确保 Service Worker 可独立于 Sidepanel 运行。
+
+### chrome.storage
+
+- `chrome.storage.local`：存储 API Key（`provider_key_{provider}`）和代理配置（`proxy_enabled`、`proxy_url`）
+- `chrome.storage.session`：存储通知 ID 到 sessionId 的映射（`notification_session_map`）
+
+## 构建配置
+
+`scripts/build.mjs` 中添加 `offscreen` 入口点：
+
+```javascript
+offscreen: join(packageRoot, "src/offscreen/offscreen.ts")
+```
+
+构建生成 `offscreen.js`，由 `offscreen.html`（构建产物）加载。

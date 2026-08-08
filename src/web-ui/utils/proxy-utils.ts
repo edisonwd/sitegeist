@@ -1,5 +1,5 @@
-import type { Api, Context, Model, SimpleStreamOptions } from "@earendil-works/pi-ai/compat";
-import { streamSimple } from "@earendil-works/pi-ai/compat";
+import type { Api, Context, Model, SimpleStreamOptions } from "@earendil-works/pi-ai";
+import { streamSimple } from "./stream.js";
 
 /**
  * Centralized proxy decision logic.

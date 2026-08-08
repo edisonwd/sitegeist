@@ -1,4 +1,4 @@
-import { getModel } from "@earendil-works/pi-ai/compat";
+import { getBuiltinModel } from "@earendil-works/pi-ai/providers/all";
 import { isOAuthCredentials, resolveApiKey } from "./oauth/index.js";
 import { getNextCronTime } from "./scheduler/cron-parser.js";
 import { sendTaskNotification } from "./scheduler/notifications.js";
@@ -507,7 +507,7 @@ async function saveTaskSession(
 	const sessionData = {
 		id: sessionId,
 		title,
-		model: task.model || getModel("anthropic", "claude-sonnet-4-6"),
+		model: task.model || getBuiltinModel("anthropic", "claude-sonnet-4-6"),
 		thinkingLevel: "medium" as const,
 		messages,
 		createdAt,
@@ -745,10 +745,12 @@ async function runTaskInOffscreen(task: ScheduledTask): Promise<TaskExecutionRes
 }
 
 async function resolveApiKeyForOffscreen(provider: string): Promise<string | undefined> {
-	const key = `provider_key_${provider}`;
-	const data = await chrome.storage.local.get([key]);
-	const stored = data[key] as string | undefined;
-	if (!stored) return undefined;
+	// Read from IndexedDB provider-keys store (same as sidepanel's ProviderKeysStore)
+	const stored = await getProviderKeyFromDB(provider);
+	if (!stored) {
+		console.log("[Scheduler] No key in IndexedDB for provider:", provider);
+		return undefined;
+	}
 
 	const proxyData = await chrome.storage.local.get(["proxy_enabled", "proxy_url"]);
 	const proxyEnabled = proxyData.proxy_enabled as boolean | undefined;
@@ -758,12 +760,34 @@ async function resolveApiKeyForOffscreen(provider: string): Promise<string | und
 	if (isOAuthCredentials(stored)) {
 		const storageAdapter = {
 			set: async (prov: string, value: string) => {
-				await chrome.storage.local.set({ [`provider_key_${prov}`]: value });
+				await setProviderKeyInDB(prov, value);
 			},
 		};
 		return resolveApiKey(stored, provider, storageAdapter, resolvedProxyUrl);
 	}
 	return typeof stored === "string" ? stored : undefined;
+}
+
+async function getProviderKeyFromDB(provider: string): Promise<string | null> {
+	const db = await openSchedulerDB();
+	return new Promise((resolve) => {
+		const tx = db.transaction("provider-keys", "readonly");
+		const store = tx.objectStore("provider-keys");
+		const req = store.get(provider);
+		req.onsuccess = () => resolve(req.result ?? null);
+		req.onerror = () => resolve(null);
+	});
+}
+
+async function setProviderKeyInDB(provider: string, value: string): Promise<void> {
+	const db = await openSchedulerDB();
+	return new Promise((resolve, reject) => {
+		const tx = db.transaction("provider-keys", "readwrite");
+		const store = tx.objectStore("provider-keys");
+		store.put(value, provider);
+		tx.oncomplete = () => resolve();
+		tx.onerror = () => reject(tx.error);
+	});
 }
 
 // IndexedDB direct access for background (bypasses Store abstraction)

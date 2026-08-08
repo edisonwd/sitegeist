@@ -1,5 +1,5 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
-import { StringEnum, type ToolResultMessage } from "@earendil-works/pi-ai/compat";
+import { StringEnum, type ToolResultMessage } from "@earendil-works/pi-ai";
 import { type Static, Type } from "@sinclair/typebox";
 import { html } from "lit";
 import { createRef, ref } from "lit/directives/ref.js";

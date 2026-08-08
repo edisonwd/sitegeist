@@ -1,4 +1,4 @@
-import { getProviders } from "@earendil-works/pi-ai/compat";
+import { getBuiltinProviders } from "@earendil-works/pi-ai/providers/all";
 import { i18n } from "@mariozechner/mini-lit";
 import { Button } from "@mariozechner/mini-lit/dist/Button.js";
 import { html, type TemplateResult } from "lit";
@@ -168,7 +168,7 @@ export class ApiKeysOAuthTab extends SettingsTab {
 	}
 
 	private renderApiKeysSection(): TemplateResult {
-		const providers = getProviders().filter((p) => !HIDDEN_PROVIDERS.has(p));
+		const providers = getBuiltinProviders().filter((p) => !HIDDEN_PROVIDERS.has(p));
 
 		return html`
 			<div class="flex flex-col gap-6">

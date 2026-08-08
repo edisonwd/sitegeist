@@ -1,51 +1,49 @@
-# Scheduled Tasks Implementation Plan
+# 定时任务实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+**目标：** 为 sitegeist 添加定时任务系统，允许用户调度任意 Agent 网页操作在指定时间或按周期性计划执行。
 
-**Goal:** Add a scheduled task system to sitegeist that lets users schedule any Agent web operation to execute at a specific time or on a recurring schedule.
+**架构：** Chrome `alarms` API 在 Service Worker 中驱动调度。任务优先在打开的 Sidepanel 中前台执行（带流式 UI），无 Sidepanel 时回退到 Offscreen Document 后台执行。任务元数据持久化在 IndexedDB 中（`ScheduleStore`），执行历史复用现有 `sessions` 存储系统。
 
-**Architecture:** Chrome `alarms` API drives scheduling in the Service Worker. Tasks fire into an Offscreen Document that runs the full Agent (reusing sidepanel's tool/model/key logic) against a target tab. Task metadata and execution logs persist in IndexedDB via the existing `Store` pattern.
-
-**Tech Stack:** Chrome MV3 (alarms, offscreen, notifications, power), IndexedDB via existing `Store`/`IndexedDBStorageBackend`, `@earendil-works/pi-agent-core` Agent, Lit for UI components, existing i18n system.
+**技术栈：** Chrome MV3（alarms, offscreen, notifications, power）、IndexedDB（现有 `Store` / `IndexedDBStorageBackend`）、`@earendil-works/pi-agent-core` Agent、`@earendil-works/pi-ai` 模型系统、Lit UI 组件、现有 i18n 系统。
 
 ---
 
-## File Structure
+## 文件结构
 
-### New Files
-- `src/scheduler/types.ts` - Shared types: `ScheduleConfig`, `ScheduledTask`, `TaskExecutionLog`, `TaskExecutionResult`
-- `src/scheduler/cron-parser.ts` - Minimal 5-field cron expression parser and next-fire-time calculator
-- `src/scheduler/schedule-store.ts` - IndexedDB store for `ScheduledTask` records
-- `src/scheduler/execution-log-store.ts` - IndexedDB store for `TaskExecutionLog` records
-- `src/scheduler/notifications.ts` - Chrome Notification helpers for task results
-- `src/offscreen/offscreen.html` - Offscreen Document HTML entry point (static)
-- `src/offscreen/offscreen.ts` - Offscreen Document JS: receives task config, builds and runs Agent
+### 新增文件
+- `src/scheduler/types.ts` — 共享类型：`ScheduleConfig`、`ScheduledTask`、`TaskExecutionResult`、alarm 工具函数
+- `src/scheduler/cron-parser.ts` — 5 字段 cron 表达式解析器、下次触发时间计算、可读化函数
+- `src/scheduler/schedule-store.ts` — `ScheduledTask` 记录的 IndexedDB Store
+- `src/scheduler/db-config.ts` — 调度器 Store schema 配置（确保 Service Worker 和 Sidepanel schema 一致）
+- `src/scheduler/notifications.ts` — Chrome 通知发送及通知-session 映射管理
+- `src/offscreen/offscreen.ts` — Offscreen Document JS：接收任务配置，构建并运行 Agent
+- `src/dialogs/ScheduledTasksTab.ts` — 任务列表标签页（`SettingsTab`）
+- `src/dialogs/TaskEditorDialog.ts` — 创建/编辑任务表单（`DialogBase`）
+- `src/dialogs/ScheduledTaskHistoryDialog.ts` — 执行历史视图（`DialogBase`），基于 sessions 系统
 
-### Modified Files
-- `src/storage/app-storage.ts` - Register new stores, bump IndexedDB version
-- `src/background.ts` - Add alarm listener, scheduler logic, execution queue, recovery on startup
-- `scripts/build.mjs` - Add `offscreen` entry point
-- `static/manifest.chrome.json` - Add `alarms`, `offscreen`, `notifications`, `power` permissions
-- `src/utils/i18n-extension.ts` - Add i18n keys for scheduled tasks UI
-- `src/sidepanel.ts` - Add ScheduledTasksTab to settings dialog
-- `src/dialogs/ScheduledTasksTab.ts` - Main task list UI (SettingsTab)
-- `src/dialogs/TaskEditorDialog.ts` - Create/edit task form (DialogBase)
-- `src/dialogs/ExecutionHistoryDialog.ts` - Execution history view (DialogBase)
-- `CHANGELOG.md` - Add entry under `[Unreleased]`
+### 修改文件
+- `src/storage/app-storage.ts` — 注册 `ScheduleStore`，IndexedDB 版本升至 5
+- `src/background.ts` — 添加 alarm 监听器、调度逻辑、执行队列、前台/后台执行、启动恢复
+- `src/sidepanel.ts` — 添加 `ScheduledTasksTab` 到设置面板、前台任务执行处理
+- `src/utils/i18n-extension.ts` — 添加定时任务 UI 的 i18n 键
+- `src/web-ui/storage/types.ts` — `SessionMetadata` 添加 `source` 和 `taskId` 可选字段
+- `scripts/build.mjs` — 添加 `offscreen` 入口点
+- `static/manifest.chrome.json` — 添加 `alarms`、`offscreen`、`notifications`、`power` 权限
 
 ---
 
-### Task 1: Data Types
+### Task 1: 数据类型
 
-**Files:**
-- Create: `src/scheduler/types.ts`
+**文件：**
+- 创建：`src/scheduler/types.ts`
 
-- [ ] **Step 1: Create the types file**
+- [ ] **步骤 1：创建类型文件**
 
 ```typescript
 // src/scheduler/types.ts
 
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import type { Model } from "@earendil-works/pi-ai/compat";
 
 export type ScheduleConfig =
 	| { type: "once"; at: string }
@@ -59,24 +57,15 @@ export interface ScheduledTask {
 	promptTemplate: string;
 	schedule: ScheduleConfig;
 	executionMode: "silent" | "visible";
+	model?: Model<any>;
 	targetUrl?: string;
 	enabled: boolean;
 	lastRunAt?: string;
 	lastRunStatus?: "success" | "failed" | "timeout";
+	lastSessionId?: string;
 	nextRunAt?: string;
 	createdAt: string;
 	updatedAt: string;
-}
-
-export interface TaskExecutionLog {
-	id: string;
-	taskId: string;
-	startedAt: string;
-	finishedAt?: string;
-	status: "running" | "success" | "failed" | "timeout";
-	error?: string;
-	summary?: string;
-	agentMessages: AgentMessage[];
 }
 
 export interface TaskExecutionResult {
@@ -98,28 +87,27 @@ export function taskIdFromAlarmName(alarmName: string): string | null {
 }
 ```
 
-- [ ] **Step 2: Verify types compile**
+**关键设计点：**
+- `model` 字段为可选，允许每个任务指定不同的 AI 模型
+- `lastSessionId` 用于快速跳转到最近执行的会话
+- `TaskExecutionResult` 用于进程间传递执行结果（非持久化类型）
+- 执行历史复用 sessions 系统，无需独立的 `TaskExecutionLog` 类型
 
-Run: `npx tsc --noEmit`
-Expected: No errors related to `src/scheduler/types.ts`
+- [ ] **步骤 2：验证类型编译**
 
-- [ ] **Step 3: Commit**
-
-```bash
-git add src/scheduler/types.ts
-git commit -m "feat: add scheduled task data types"
-```
+运行：`npx tsc --noEmit`
+预期：无 `src/scheduler/types.ts` 相关错误
 
 ---
 
-### Task 2: Cron Parser
+### Task 2: Cron 解析器
 
-**Files:**
-- Create: `src/scheduler/cron-parser.ts`
+**文件：**
+- 创建：`src/scheduler/cron-parser.ts`
 
-- [ ] **Step 1: Create the cron parser**
+- [ ] **步骤 1：创建 cron 解析器**
 
-This is a minimal 5-field cron parser (minute, hour, day-of-month, month, day-of-week) supporting ranges (`1-5`), lists (`1,3,5`), steps (`*/2`), and wildcards (`*`). No seconds field, no special characters.
+5 字段 cron 解析器（分钟、小时、日期、月份、星期），支持范围（`1-5`）、列表（`1,3,5`）、步进（`*/2`）和通配符（`*`）。无秒字段，无特殊字符。
 
 ```typescript
 // src/scheduler/cron-parser.ts
@@ -144,21 +132,15 @@ function parseField(field: string, min: number, max: number): CronField {
 		}
 
 		if (range === "*") {
-			for (let i = min; i <= max; i += step) {
-				values.add(i);
-			}
+			for (let i = min; i <= max; i += step) values.add(i);
 		} else if (range.includes("-")) {
 			const [startStr, endStr] = range.split("-");
 			const start = parseInt(startStr, 10);
 			const end = parseInt(endStr, 10);
-			for (let i = start; i <= end; i += step) {
-				values.add(i);
-			}
+			for (let i = start; i <= end; i += step) values.add(i);
 		} else {
 			const val = parseInt(range, 10);
-			if (!isNaN(val) && val >= min && val <= max) {
-				values.add(val);
-			}
+			if (!Number.isNaN(val) && val >= min && val <= max) values.add(val);
 		}
 	}
 
@@ -196,22 +178,15 @@ export function getNextCronTime(expression: string, after: Date = new Date()): D
 
 	const maxIterations = 366 * 24 * 60;
 	for (let i = 0; i < maxIterations; i++) {
-		const month = candidate.getMonth() + 1;
-		const day = candidate.getDate();
-		const dow = candidate.getDay();
-		const hour = candidate.getHours();
-		const minute = candidate.getMinutes();
-
 		if (
-			cron.month.values.has(month) &&
-			cron.dayOfMonth.values.has(day) &&
-			cron.dayOfWeek.values.has(dow) &&
-			cron.hour.values.has(hour) &&
-			cron.minute.values.has(minute)
+			cron.month.values.has(candidate.getMonth() + 1) &&
+			cron.dayOfMonth.values.has(candidate.getDate()) &&
+			cron.dayOfWeek.values.has(candidate.getDay()) &&
+			cron.hour.values.has(candidate.getHours()) &&
+			cron.minute.values.has(candidate.getMinutes())
 		) {
 			return candidate;
 		}
-
 		candidate.setMinutes(candidate.getMinutes() + 1);
 	}
 
@@ -226,47 +201,36 @@ export function cronToHumanReadable(expression: string): string {
 	}
 
 	const fields = expression.trim().split(/\s+/);
-	const [minute, hour, dom, month, dow] = fields;
+	const [minute, hour, dom, , dow] = fields;
 
-	if (minute === "0" && hour === "9" && dom === "*" && month === "*" && dow === "*") {
-		return "Every day at 09:00";
-	}
-	if (minute === "0" && hour === "*" && dom === "*" && month === "*" && dow === "*") {
-		return "Every hour";
-	}
-	if (minute === "0" && dom === "*" && month === "*" && dow === "1") {
-		return "Every Monday";
-	}
-	if (minute === "0" && dom === "1" && month === "*") {
-		return "1st of each month";
-	}
+	if (minute === "0" && hour === "9" && dom === "*" && dow === "*") return "Every day at 09:00";
+	if (minute === "0" && hour === "*" && dom === "*" && dow === "*") return "Every hour";
+	if (minute === "0" && dom === "*" && dow === "1") return "Every Monday";
+	if (minute === "0" && dom === "1") return "1st of each month";
 
 	return `${minute} ${hour} * * ${dow === "*" ? "every day" : `weekday ${dow}`}`;
 }
 ```
 
-- [ ] **Step 2: Verify compilation**
+**关键设计点：**
+- `getNextCronTime` 用于 cron 类型 alarm 的 `when` 参数计算
+- `cronToHumanReadable` 在 UI 中将 cron 表达式显示为可读文本
+- cron 类型 alarm 每次触发后需重新计算并注册下次触发的 alarm（一次性 `when`），因为 Chrome alarms API 不直接支持 cron 语义
 
-Run: `npx tsc --noEmit`
-Expected: No errors
+- [ ] **步骤 2：验证编译**
 
-- [ ] **Step 3: Commit**
-
-```bash
-git add src/scheduler/cron-parser.ts
-git commit -m "feat: add cron expression parser for scheduled tasks"
-```
+运行：`npx tsc --noEmit`
+预期：无错误
 
 ---
 
-### Task 3: Schedule Store
+### Task 3: ScheduleStore（IndexedDB 存储）
 
-**Files:**
-- Create: `src/scheduler/schedule-store.ts`
+**文件：**
+- 创建：`src/scheduler/schedule-store.ts`
+- 创建：`src/scheduler/db-config.ts`
 
-- [ ] **Step 1: Create the schedule store**
-
-Follows the same pattern as `SkillsStore` - extends `Store`, defines `getConfig()`, provides domain-specific CRUD methods.
+- [ ] **步骤 1：创建 Store 和 DB 配置**
 
 ```typescript
 // src/scheduler/schedule-store.ts
@@ -313,308 +277,124 @@ export class ScheduleStore extends Store {
 }
 ```
 
-- [ ] **Step 2: Verify compilation**
-
-Run: `npx tsc --noEmit`
-Expected: No errors
-
-- [ ] **Step 3: Commit**
-
-```bash
-git add src/scheduler/schedule-store.ts
-git commit -m "feat: add ScheduleStore for IndexedDB persistence"
-```
-
----
-
-### Task 4: Execution Log Store
-
-**Files:**
-- Create: `src/scheduler/execution-log-store.ts`
-
-- [ ] **Step 1: Create the execution log store**
-
 ```typescript
-// src/scheduler/execution-log-store.ts
+// src/scheduler/db-config.ts
 
-import { Store, type StoreConfig } from "../web-ui/index.js";
-import type { TaskExecutionLog } from "./types.js";
+export const SCHEDULE_STORE_NAME = "scheduled_tasks";
 
-export class ExecutionLogStore extends Store {
-	private readonly storeName = "task_execution_logs";
-
-	getConfig(): StoreConfig {
-		return {
-			name: this.storeName,
-			keyPath: "id",
-			indices: [
-				{ name: "taskId", keyPath: "taskId" },
-				{ name: "startedAt", keyPath: "startedAt" },
-			],
-		};
-	}
-
-	async get(id: string): Promise<TaskExecutionLog | null> {
-		return this.getBackend().get<TaskExecutionLog>(this.storeName, id);
-	}
-
-	async save(log: TaskExecutionLog): Promise<void> {
-		await this.getBackend().set(this.storeName, log.id, log);
-	}
-
-	async delete(id: string): Promise<void> {
-		await this.getBackend().delete(this.storeName, id);
-	}
-
-	async listByTask(taskId: string): Promise<TaskExecutionLog[]> {
-		const all = await this.getBackend().getAllFromIndex<TaskExecutionLog>(
-			this.storeName,
-			"startedAt",
-			"desc",
-		);
-		return all.filter((log) => log.taskId === taskId);
-	}
-
-	async listAll(): Promise<TaskExecutionLog[]> {
-		return this.getBackend().getAllFromIndex<TaskExecutionLog>(
-			this.storeName,
-			"startedAt",
-			"desc",
-		);
-	}
-
-	async markStaleAsFailed(timeoutMs: number = 15 * 60 * 1000): Promise<void> {
-		const running = (await this.listAll()).filter((log) => log.status === "running");
-		const cutoff = Date.now() - timeoutMs;
-
-		for (const log of running) {
-			const started = new Date(log.startedAt).getTime();
-			if (started < cutoff) {
-				log.status = "failed";
-				log.error = "Task interrupted (service worker restart or crash)";
-				log.finishedAt = new Date().toISOString();
-				await this.save(log);
-			}
-		}
-	}
+export interface StoreSchema {
+	name: string;
+	keyPath: string;
+	indices: { name: string; keyPath: string; unique?: boolean }[];
 }
+
+export const SCHEDULER_STORES: StoreSchema[] = [
+	{
+		name: SCHEDULE_STORE_NAME,
+		keyPath: "id",
+		indices: [
+			{ name: "enabled", keyPath: "enabled" },
+			{ name: "createdAt", keyPath: "createdAt" },
+		],
+	},
+];
 ```
 
-- [ ] **Step 2: Verify compilation**
+**关键设计点：**
+- `ScheduleStore` 继承现有 `Store` 基类，复用 `IndexedDBStorageBackend`
+- `db-config.ts` 导出 schema 配置供 Service Worker 和 Sidepanel 共享，确保 schema 一致性
+- Store 名称为 `scheduled_tasks`
 
-Run: `npx tsc --noEmit`
-Expected: No errors
+- [ ] **步骤 2：验证编译**
 
-- [ ] **Step 3: Commit**
-
-```bash
-git add src/scheduler/execution-log-store.ts
-git commit -m "feat: add ExecutionLogStore for task run history"
-```
+运行：`npx tsc --noEmit`
+预期：无错误
 
 ---
 
-### Task 5: Wire Stores into AppStorage
+### Task 4: 注册 Store 并升级 IndexedDB 版本
 
-**Files:**
-- Modify: `src/storage/app-storage.ts`
+**文件：**
+- 修改：`src/storage/app-storage.ts`
 
-- [ ] **Step 1: Update AppStorage to include new stores**
-
-The existing `SitegeistAppStorage` constructor needs to instantiate both new stores, gather their configs, bump the IndexedDB version, and wire the backend.
-
-Replace the entire contents of `src/storage/app-storage.ts`:
+- [ ] **步骤 1：在 SitegeistAppStorage 中注册 ScheduleStore**
 
 ```typescript
 // src/storage/app-storage.ts
 
-import {
-	AppStorage as BaseAppStorage,
-	CustomProvidersStore,
-	getAppStorage,
-	IndexedDBStorageBackend,
-	ProviderKeysStore,
-	SessionsStore,
-	SettingsStore,
-} from "../web-ui/index.js";
-import { CostStore } from "./stores/cost-store.js";
-import { SitegeistSessionsStore } from "./stores/sessions-store.js";
-import { SkillsStore } from "./stores/skills-store.js";
 import { ScheduleStore } from "../scheduler/schedule-store.js";
-import { ExecutionLogStore } from "../scheduler/execution-log-store.js";
+// ... 其他 imports ...
 
 export class SitegeistAppStorage extends BaseAppStorage {
 	readonly skills: SkillsStore;
 	readonly costs: CostStore;
 	readonly schedule: ScheduleStore;
-	readonly executionLogs: ExecutionLogStore;
 
 	constructor() {
-		const settings = new SettingsStore();
-		const providerKeys = new ProviderKeysStore();
-		const sessions = new SitegeistSessionsStore();
-		const customProviders = new CustomProvidersStore();
-		const skills = new SkillsStore();
-		const costs = new CostStore();
+		// ... 现有 store 实例化 ...
 		const schedule = new ScheduleStore();
-		const executionLogs = new ExecutionLogStore();
 
 		const configs = [
-			settings.getConfig(),
-			SessionsStore.getMetadataConfig(),
-			providerKeys.getConfig(),
-			customProviders.getConfig(),
-			sessions.getConfig(),
-			skills.getConfig(),
-			costs.getConfig(),
+			// ... 现有 configs ...
 			schedule.getConfig(),
-			executionLogs.getConfig(),
 		];
 
 		const backend = new IndexedDBStorageBackend({
 			dbName: "sitegeist-storage",
-			version: 4,
+			version: 5,   // 从之前的版本升至 5
 			stores: configs,
 		});
 
-		settings.setBackend(backend);
-		providerKeys.setBackend(backend);
-		customProviders.setBackend(backend);
-		sessions.setBackend(backend);
-		skills.setBackend(backend);
-		costs.setBackend(backend);
+		// ... 现有 setBackend 调用 ...
 		schedule.setBackend(backend);
-		executionLogs.setBackend(backend);
 
-		super(settings, providerKeys, sessions, customProviders, backend);
+		// ... 现有 super() 调用 ...
 
-		this.skills = skills;
-		this.costs = costs;
 		this.schedule = schedule;
-		this.executionLogs = executionLogs;
 	}
 }
-
-export function getSitegeistStorage(): SitegeistAppStorage {
-	return getAppStorage() as SitegeistAppStorage;
-}
 ```
 
-- [ ] **Step 2: Verify compilation**
+**关键设计点：**
+- IndexedDB 版本升至 5，`onupgradeneeded` 会自动创建新的 `scheduled_tasks` 表
+- `schedule` 作为 `SitegeistAppStorage` 的公开属性，UI 组件通过 `getSitegeistStorage().schedule` 访问
 
-Run: `npx tsc --noEmit`
-Expected: No errors
+- [ ] **步骤 2：运行 check.sh**
 
-- [ ] **Step 3: Commit**
-
-```bash
-git add src/storage/app-storage.ts
-git commit -m "feat: register schedule and execution log stores in AppStorage"
-```
+运行：`./check.sh`
+预期：所有检查通过
 
 ---
 
-### Task 6: Manifest Permissions and Offscreen HTML
+### Task 5: 通知工具
 
-**Files:**
-- Modify: `static/manifest.chrome.json`
-- Create: `static/offscreen.html`
-- Modify: `scripts/build.mjs`
+**文件：**
+- 创建：`src/scheduler/notifications.ts`
 
-- [ ] **Step 1: Add permissions to manifest**
-
-In `static/manifest.chrome.json`, add `"alarms"`, `"offscreen"`, `"notifications"`, and `"power"` to the `permissions` array:
-
-```json
-"permissions": [
-    "storage",
-    "unlimitedStorage",
-    "activeTab",
-    "scripting",
-    "sidePanel",
-    "userScripts",
-    "webNavigation",
-    "debugger",
-    "declarativeNetRequest",
-    "alarms",
-    "offscreen",
-    "notifications",
-    "power"
-]
-```
-
-- [ ] **Step 2: Create offscreen.html**
-
-```html
-<!-- static/offscreen.html -->
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"></head>
-<body>
-<script type="module" src="offscreen.js"></script>
-</body>
-</html>
-```
-
-- [ ] **Step 3: Add offscreen entry point to build script**
-
-In `scripts/build.mjs`, add `offscreen` to the `entryPoints` object:
-
-```javascript
-const entryPoints = {
-    sidepanel: join(packageRoot, "src/sidepanel.ts"),
-    background: join(packageRoot, "src/background.ts"),
-    offscreen: join(packageRoot, "src/offscreen/offscreen.ts"),
-    ...(isDev
-        ? {
-                debug: join(packageRoot, "src/debug.ts"),
-                icons: join(packageRoot, "src/icons.ts"),
-            }
-        : {}),
-};
-```
-
-- [ ] **Step 4: Verify build**
-
-Run: `npm run build`
-Expected: Build succeeds, `dist-chrome/offscreen.html` and `dist-chrome/offscreen.js` are present.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add static/manifest.chrome.json static/offscreen.html scripts/build.mjs
-git commit -m "feat: add manifest permissions and offscreen document entry point"
-```
-
----
-
-### Task 7: Notifications Helper
-
-**Files:**
-- Create: `src/scheduler/notifications.ts`
-
-- [ ] **Step 1: Create the notifications module**
+- [ ] **步骤 1：创建通知发送函数**
 
 ```typescript
 // src/scheduler/notifications.ts
 
-import type { TaskExecutionLog } from "./types.js";
+const NOTIFICATION_SESSION_MAP_KEY = "notification_session_map";
 
 export async function sendTaskNotification(
 	taskName: string,
-	log: TaskExecutionLog,
+	status: "success" | "failed" | "timeout",
+	error?: string,
+	sessionId?: string,
 ): Promise<void> {
 	let title: string;
 	let message: string;
 
-	switch (log.status) {
+	switch (status) {
 		case "success":
 			title = `Task completed: ${taskName}`;
-			message = log.summary || "Task finished successfully.";
+			message = "Task finished successfully.";
 			break;
 		case "failed":
 			title = `Task failed: ${taskName}`;
-			message = log.error || "Task encountered an error.";
+			message = error || "Task encountered an error.";
 			break;
 		case "timeout":
 			title = `Task timed out: ${taskName}`;
@@ -624,8 +404,22 @@ export async function sendTaskNotification(
 			return;
 	}
 
+	const notificationId = `task-result-${sessionId || crypto.randomUUID()}`;
+
+	// 存储通知 ID -> sessionId 映射供点击处理使用
+	if (sessionId) {
+		try {
+			const data = await chrome.storage.session.get(NOTIFICATION_SESSION_MAP_KEY);
+			const map: Record<string, string> = (data[NOTIFICATION_SESSION_MAP_KEY] as Record<string, string>) || {};
+			map[notificationId] = sessionId;
+			await chrome.storage.session.set({ [NOTIFICATION_SESSION_MAP_KEY]: map });
+		} catch {
+			// storage.session 可能不可用
+		}
+	}
+
 	try {
-		await chrome.notifications.create(`task-result-${log.id}`, {
+		await chrome.notifications.create(notificationId, {
 			type: "basic",
 			iconUrl: chrome.runtime.getURL("icon-128.png"),
 			title,
@@ -637,50 +431,75 @@ export async function sendTaskNotification(
 }
 ```
 
-- [ ] **Step 2: Verify compilation**
+**关键设计点：**
+- 通知 ID 格式 `task-result-${sessionId}` 便于点击时解析
+- 映射存储在 `chrome.storage.session`（仅 Service Worker 生命周期内有效）
+- `storage.session` 操作包含 try-catch，因其可能不可用
 
-Run: `npx tsc --noEmit`
-Expected: No errors
+- [ ] **步骤 2：验证编译**
 
-- [ ] **Step 3: Commit**
+运行：`npx tsc --noEmit`
+预期：无错误
 
-```bash
-git add src/scheduler/notifications.ts
-git commit -m "feat: add Chrome notification helper for task results"
+---
+
+### Task 6: 添加 Manifest 权限
+
+**文件：**
+- 修改：`static/manifest.chrome.json`
+
+- [ ] **步骤 1：添加调度相关权限**
+
+在 `permissions` 数组中添加：
+
+```json
+"alarms",
+"offscreen",
+"notifications",
+"power"
 ```
 
 ---
 
-### Task 8: Offscreen Document Script
+### Task 7: 添加构建入口
 
-**Files:**
-- Create: `src/offscreen/offscreen.ts`
+**文件：**
+- 修改：`scripts/build.mjs`
 
-This is the script that runs inside the Offscreen Document. It receives a task config from the Service Worker, builds an Agent, executes it against a target tab, and sends results back.
+- [ ] **步骤 1：添加 offscreen 入口点**
 
-- [ ] **Step 1: Create offscreen.ts**
+在 build 配置的 entries 中添加：
 
-This file needs to import the same Agent construction logic used in sidepanel.ts. Rather than duplicating the code, it imports the shared modules directly. The Agent needs: tools (NavigateTool, repl, DebuggerTool, ExtractImageTool), model config from storage, and API key resolution.
+```javascript
+offscreen: join(packageRoot, "src/offscreen/offscreen.ts"),
+```
+
+构建生成 `offscreen.js`，供 `offscreen.html` 加载。
+
+---
+
+### Task 8: Offscreen Document Agent 运行时
+
+**文件：**
+- 创建：`src/offscreen/offscreen.ts`
+
+- [ ] **步骤 1：创建 Offscreen Document 执行逻辑**
 
 ```typescript
 // src/offscreen/offscreen.ts
 
 import { Agent, type AgentEvent, type AgentMessage } from "@earendil-works/pi-agent-core";
 import { getModel } from "@earendil-works/pi-ai/compat";
-import { createStreamFn } from "../web-ui/index.js";
 import { browserMessageTransformer } from "../messages/message-transformer.js";
-import { resolveApiKey, isOAuthCredentials } from "../oauth/index.js";
 import { SYSTEM_PROMPT } from "../prompts/prompts.js";
-import { DebuggerTool } from "../tools/debugger.js";
-import { ExtractImageTool } from "../tools/extract-image.js";
-import { NavigateTool } from "../tools/navigate.js";
-import { createReplTool } from "../tools/repl/repl.js";
-import { BrowserJsRuntimeProvider, NavigateRuntimeProvider } from "../tools/repl/runtime-providers.js";
-import { NativeInputEventsRuntimeProvider } from "../tools/NativeInputEventsRuntimeProvider.js";
 import type { ScheduledTask, TaskExecutionResult } from "../scheduler/types.js";
+import { createStreamFn } from "../web-ui/index.js";
 
 interface TaskConfig {
+	type: "execute-task";
 	task: ScheduledTask;
+	tabId: number;
+	proxyUrl?: string;
 }
 
 const TASK_TIMEOUT_MS = 10 * 60 * 1000;
@@ -688,12 +507,12 @@ const TASK_TIMEOUT_MS = 10 * 60 * 1000;
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 	if (message.type === "execute-task") {
 		const config = message as TaskConfig;
-		executeTask(config.task)
+		executeTask(config.task, config.tabId, config.proxyUrl)
 			.then((result) => {
 				chrome.runtime.sendMessage({ type: "task-result", result });
 				sendResponse({ received: true });
 			})
-			.catch((error) => {
+			.catch((error: unknown) => {
 				const result: TaskExecutionResult = {
 					status: "failed",
 					error: error instanceof Error ? error.message : String(error),
@@ -706,19 +525,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 	}
 });
 
-async function executeTask(task: ScheduledTask): Promise<TaskExecutionResult> {
-	const tab = await chrome.tabs.create({
-		url: task.targetUrl || "about:blank",
-		active: task.executionMode === "visible",
-	});
-
-	const tabId = tab.id!;
+async function executeTask(task: ScheduledTask, _tabId: number, proxyUrl?: string): Promise<TaskExecutionResult> {
 	const agentMessages: AgentMessage[] = [];
 
 	try {
-		const storage = chrome.storage.local;
-
-		const model = await resolveModel(storage);
+		const model = task.model ?? getModel("anthropic" as any, "claude-sonnet-4-6" as any);
 
 		const agent = new Agent({
 			initialState: {
@@ -730,385 +541,393 @@ async function executeTask(task: ScheduledTask): Promise<TaskExecutionResult> {
 			},
 			convertToLlm: browserMessageTransformer,
 			toolExecution: "sequential",
-			streamFn: createStreamFn(async () => {
-				const data = await chrome.storage.local.get(["proxy_enabled", "proxy_url"]);
-				return data.proxy_enabled ? data.proxy_url || undefined : undefined;
-			}),
-			getApiKey: async (provider: string) => {
-				return resolveApiKeyFromStorage(provider, storage);
-			},
+			streamFn: createStreamFn(async (): Promise<string | undefined> => proxyUrl),
+			getApiKey: async (provider: string) => requestApiKey(provider),
 		});
 
 		agent.subscribe((event: AgentEvent) => {
-			if (event.type === "message" || event.type === "message_end") {
+			if (event.type === "message_end") {
 				agentMessages.push(event.message);
 			}
 		});
 
-		agent.start(task.promptTemplate);
-
+		await agent.prompt(task.promptTemplate);
 		const result = await waitForAgentCompletion(agent, TASK_TIMEOUT_MS);
 
-		return {
-			status: result,
-			agentMessages,
-		};
-	} catch (error) {
+		return { status: result, agentMessages };
+	} catch (error: unknown) {
 		return {
 			status: "failed",
 			error: error instanceof Error ? error.message : String(error),
 			agentMessages,
 		};
-	} finally {
-		if (task.executionMode === "silent") {
-			try {
-				await chrome.tabs.remove(tabId);
-			} catch {
-				// Tab may already be closed
-			}
-		}
 	}
+}
+
+function requestApiKey(provider: string): Promise<string | undefined> {
+	return new Promise((resolve) => {
+		chrome.runtime.sendMessage({ type: "get-api-key", provider }, (response) => {
+			resolve(response?.apiKey as string | undefined);
+		});
+	});
 }
 
 function buildSchedulerSystemPrompt(task: ScheduledTask): string {
 	return `${SYSTEM_PROMPT}\n\nYou are executing a scheduled task. The target tab is already open. Follow these instructions precisely and report what you accomplished:\n\n${task.description}`;
 }
 
-async function resolveModel(storage: chrome.storage.StorageArea): Promise<any> {
-	const data = await storage.get(["lastUsedModel"]);
-	if (data.lastUsedModel) return data.lastUsedModel;
-	return getModel("anthropic", "claude-sonnet-4-6");
-}
-
-async function resolveApiKeyFromStorage(
-	provider: string,
-	storage: chrome.storage.StorageArea,
-): Promise<string | undefined> {
-	const data = await storage.get([`provider_key_${provider}`]);
-	const stored = data[`provider_key_${provider}`];
-	if (!stored) return undefined;
-
-	const proxyData = await storage.get(["proxy_enabled", "proxy_url"]);
-	const proxyUrl = proxyData.proxy_enabled ? proxyData.proxy_url || undefined : undefined;
-
-	if (isOAuthCredentials(stored)) {
-		return resolveApiKey(stored, provider, undefined as any, proxyUrl);
-	}
-	return typeof stored === "string" ? stored : undefined;
-}
-
 function waitForAgentCompletion(agent: Agent, timeoutMs: number): Promise<"success" | "timeout"> {
 	return new Promise((resolve, reject) => {
+		let settled = false;
+
 		const timer = setTimeout(() => {
-			agent.abort();
-			resolve("timeout");
+			if (!settled) {
+				settled = true;
+				unsub();
+				agent.abort();
+				resolve("timeout");
+			}
 		}, timeoutMs);
 
 		const unsub = agent.subscribe((event: AgentEvent) => {
-			if (event.type === "complete") {
+			if (event.type === "agent_end" && !settled) {
+				settled = true;
 				clearTimeout(timer);
 				unsub();
-				resolve("success");
-			}
-			if (event.type === "error") {
-				clearTimeout(timer);
-				unsub();
-				reject(new Error((event as any).error || "Agent error"));
+
+				const lastAssistant = [...event.messages]
+					.reverse()
+					.find((m: AgentMessage) => m.role === "assistant") as any;
+
+				if (lastAssistant?.stopReason === "error") {
+					reject(new Error(lastAssistant.errorMessage || "Agent error"));
+				} else {
+					resolve("success");
+				}
 			}
 		});
 	});
 }
 ```
 
-- [ ] **Step 2: Verify compilation**
+**关键设计点：**
+- Offscreen Document 通过 `chrome.runtime.onMessage` 监听 `execute-task` 消息
+- API Key 通过 `get-api-key` 消息向 Service Worker 请求（Offscreen 无法直接访问存储的凭据）
+- `waitForAgentCompletion` 监听 `agent_end` 事件，支持超时（10 分钟）
+- 执行结果通过 `task-result` 消息回传给 Service Worker
 
-Run: `npx tsc --noEmit`
-Expected: No errors (may need to adjust imports based on actual export paths from `web-ui/index.js`)
+- [ ] **步骤 2：验证编译**
 
-- [ ] **Step 3: Verify build produces offscreen.js**
-
-Run: `npm run build`
-Expected: `dist-chrome/offscreen.js` is generated
-
-- [ ] **Step 4: Commit**
-
-```bash
-git add src/offscreen/offscreen.ts
-git commit -m "feat: add offscreen document script for task execution"
-```
+运行：`npx tsc --noEmit`
+预期：无错误
 
 ---
 
-### Task 9: Background Scheduler
+### Task 9: Background Service Worker 调度逻辑
 
-**Files:**
-- Modify: `src/background.ts`
+**文件：**
+- 修改：`src/background.ts`
 
-This is the core scheduler logic. It handles:
-- Alarm creation/update/deletion
-- Alarm listener that dispatches task execution
-- Execution queue (one task at a time)
-- Recovery on Service Worker startup
-- Offscreen Document lifecycle management
-
-- [ ] **Step 1: Add scheduler logic to background.ts**
-
-Append the following to the end of `src/background.ts` (after the existing `closeSidepanel` function). Also add the necessary imports at the top.
-
-Add these imports at the top of `src/background.ts`:
+- [ ] **步骤 1：添加 imports 和核心变量**
 
 ```typescript
-import { alarmNameForTask, taskIdFromAlarmName } from "./scheduler/types.js";
-import { sendTaskNotification } from "./scheduler/notifications.js";
 import { getNextCronTime } from "./scheduler/cron-parser.js";
-import type { ScheduledTask, TaskExecutionLog, TaskExecutionResult } from "./scheduler/types.js";
-```
-
-Add the scheduler state and functions at the end of `src/background.ts`:
-
-```typescript
-// ============================================================================
-// SCHEDULED TASK SCHEDULER
-// ============================================================================
+import { sendTaskNotification } from "./scheduler/notifications.js";
+import type { ScheduledTask, TaskExecutionResult } from "./scheduler/types.js";
+import { alarmNameForTask, taskIdFromAlarmName } from "./scheduler/types.js";
 
 const SCHEDULE_STORE_NAME = "scheduled_tasks";
-const EXECUTION_LOG_STORE_NAME = "task_execution_logs";
-
 let isExecuting = false;
 const pendingQueue: string[] = [];
+```
 
-// Listen for alarm events
+- [ ] **步骤 2：添加 alarm 监听器**
+
+```typescript
 chrome.alarms.onAlarm.addListener(async (alarm: chrome.alarms.Alarm) => {
 	const taskId = taskIdFromAlarmName(alarm.name);
 	if (!taskId) return;
 
-	console.log(`[Scheduler] Alarm fired for task: ${taskId}`);
-
 	if (isExecuting) {
-		console.log(`[Scheduler] Task ${taskId} queued (another task running)`);
 		pendingQueue.push(taskId);
 		return;
 	}
 
 	await executeTaskById(taskId);
 });
+```
 
-// Listen for messages from sidepanel for alarm management
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+- [ ] **步骤 3：添加消息处理器**
+
+处理来自 Sidepanel 和 Offscreen 的消息：
+
+```typescript
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 	if (message.type === "register-alarm") {
-		registerAlarmForTask(message.task).then(() => {
-			sendResponse({ success: true });
-		}).catch((err) => {
-			sendResponse({ success: false, error: String(err) });
-		});
+		registerAlarmForTask(message.task).then(() => sendResponse({ success: true }));
 		return true;
 	}
 	if (message.type === "remove-alarm") {
-		removeAlarmForTask(message.taskId).then(() => {
-			sendResponse({ success: true });
-		}).catch((err) => {
-			sendResponse({ success: false, error: String(err) });
-		});
+		removeAlarmForTask(message.taskId).then(() => sendResponse({ success: true }));
+		return true;
+	}
+	if (message.type === "get-api-key") {
+		resolveApiKeyForOffscreen(message.provider).then((apiKey) => sendResponse({ apiKey }));
+		return true;
+	}
+	if (message.type === "scheduled-task-complete") {
+		handleForegroundTaskComplete(message.taskId, message.sessionId, message.status, message.error)
+			.then(() => sendResponse({ success: true }));
 		return true;
 	}
 	return false;
 });
+```
 
-// Listen for task results from Offscreen Document
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-	if (message.type === "task-result" && sender.documentLifecycle === "active") {
-		// This is handled in executeTaskById via the offscreen message channel
-		return false;
+- [ ] **步骤 4：添加通知点击处理**
+
+```typescript
+chrome.notifications.onClicked.addListener(async (notificationId: string) => {
+	if (!notificationId.startsWith("task-result-")) return;
+
+	try {
+		const data = await chrome.storage.session.get("notification_session_map");
+		const map: Record<string, string> = (data.notification_session_map as Record<string, string>) || {};
+		const sessionId = map[notificationId];
+
+		if (sessionId) {
+			delete map[notificationId];
+			await chrome.storage.session.set({ notification_session_map: map });
+			const url = chrome.runtime.getURL(`sidepanel.html?session=${sessionId}`);
+			await chrome.tabs.create({ url });
+		}
+	} catch (err) {
+		console.error("[Scheduler] Failed to handle notification click:", err);
 	}
-	return false;
-});
 
+	try { chrome.notifications.clear(notificationId); } catch { /* ignore */ }
+});
+```
+
+- [ ] **步骤 5：添加 executeTaskById 核心执行函数**
+
+实现任务加载、会话创建、前台/后台执行选择、执行后处理：
+
+```typescript
 async function executeTaskById(taskId: string): Promise<void> {
 	isExecuting = true;
 
 	try {
 		const task = await getTaskFromStorage(taskId);
-		if (!task) {
-			console.error(`[Scheduler] Task ${taskId} not found`);
-			return;
+		if (!task || !task.enabled) return;
+
+		const sessionId = crypto.randomUUID();
+
+		// 先保存 "running" 状态的会话，确保即使崩溃也有记录
+		await saveTaskSession(task, sessionId,
+			{ status: "failed", error: "Task interrupted", agentMessages: [] }, "running");
+
+		try { (chrome.power as any)?.requestKeepAwake?.("system"); } catch { /* 可能不可用 */ }
+
+		// 前台优先，回退到 Offscreen
+		let result: TaskExecutionResult;
+		const foregroundResult = await runTaskInForeground(task, sessionId);
+		if (foregroundResult) {
+			result = foregroundResult;
+		} else {
+			result = await runTaskInOffscreen(task);
+			await saveTaskSession(task, sessionId, result, result.status);
 		}
-		if (!task.enabled) {
-			console.log(`[Scheduler] Task ${taskId} is disabled, skipping`);
-			return;
-		}
 
-		const logId = crypto.randomUUID();
-		const log: TaskExecutionLog = {
-			id: logId,
-			taskId,
-			startedAt: new Date().toISOString(),
-			status: "running",
-			agentMessages: [],
-		};
-		await saveExecutionLog(log);
-
-		try {
-			(chrome.power as any)?.requestKeepAwake?.("system");
-		} catch {}
-
-		const result = await runTaskInOffscreen(task);
-
-		log.status = result.status;
-		log.error = result.error;
-		log.summary = result.summary;
-		log.agentMessages = result.agentMessages;
-		log.finishedAt = new Date().toISOString();
-		await saveExecutionLog(log);
-
+		// 更新任务状态
 		task.lastRunAt = new Date().toISOString();
 		task.lastRunStatus = result.status;
+		task.lastSessionId = sessionId;
 		task.updatedAt = new Date().toISOString();
 
+		// 更新调度
 		if (task.schedule.type === "once") {
-			task.enabled = false;
+			await chrome.alarms.clear(alarmNameForTask(task.id));
+			task.nextRunAt = undefined;
 		} else if (task.schedule.type === "cron") {
 			const nextTime = getNextCronTime(task.schedule.expression);
+			await chrome.alarms.create(alarmNameForTask(task.id), { when: nextTime.getTime() });
 			task.nextRunAt = nextTime.toISOString();
-			await updateCronAlarm(task, nextTime);
 		}
 
 		await saveTask(task);
-		await sendTaskNotification(task.name, log);
-	} catch (error) {
-		console.error(`[Scheduler] Error executing task ${taskId}:`, error);
+		await sendTaskNotification(task.name, result.status, result.error, sessionId);
 	} finally {
-		try {
-			(chrome.power as any)?.releaseKeepAwake?.();
-		} catch {}
-
-		try {
-			await chrome.offscreen.closeDocument();
-		} catch {}
+		try { (chrome.power as any)?.releaseKeepAwake?.("system"); } catch { /* ignore */ }
+		try { await chrome.offscreen.closeDocument(); } catch { /* 可能已关闭 */ }
 
 		isExecuting = false;
 
 		if (pendingQueue.length > 0) {
 			const nextTaskId = pendingQueue.shift()!;
-			console.log(`[Scheduler] Processing queued task: ${nextTaskId}`);
 			executeTaskById(nextTaskId);
 		}
 	}
 }
+```
 
-async function runTaskInOffscreen(task: ScheduledTask): Promise<TaskExecutionResult> {
-	try {
-		const existingContext = await chrome.runtime.getContexts({
-			contextTypes: ["OFFSCREEN_DOCUMENT" as any],
-		});
+- [ ] **步骤 6：添加前台执行函数**
 
-		if (existingContext.length === 0) {
-			await chrome.offscreen.createDocument({
-				url: "offscreen.html",
-				reasons: ["WORKERS" as any],
-				justification: "Scheduled task execution",
-			});
+```typescript
+async function runTaskInForeground(task: ScheduledTask, sessionId: string): Promise<TaskExecutionResult | null> {
+	if (openSidepanels.size === 0) return null;
+
+	let tabId: number | undefined;
+	if (task.targetUrl) {
+		try {
+			const tab = await chrome.tabs.create({ url: task.targetUrl, active: true });
+			tabId = tab.id;
+		} catch (error) {
+			return {
+				status: "failed",
+				error: `Failed to create target tab: ${error instanceof Error ? error.message : String(error)}`,
+				agentMessages: [],
+			};
 		}
+	}
+
+	return new Promise<TaskExecutionResult>((resolve) => {
+		const timeout = setTimeout(() => {
+			pendingForegroundTask = null;
+			resolve({ status: "timeout", error: "Task exceeded 10-minute timeout", agentMessages: [] });
+		}, 10 * 60 * 1000);
+
+		pendingForegroundTask = { sessionId, taskId: task.id, resolve, timeout };
+
+		chrome.runtime.sendMessage({
+			type: "execute-scheduled-task",
+			taskId: task.id,
+			sessionId,
+			prompt: task.promptTemplate,
+			description: task.description,
+			model: task.model,
+			targetUrl: task.targetUrl,
+			tabId,
+		}).catch((err: unknown) => {
+			clearTimeout(timeout);
+			pendingForegroundTask = null;
+			resolve({
+				status: "failed",
+				error: `Failed to send task to sidepanel: ${err instanceof Error ? err.message : String(err)}`,
+				agentMessages: [],
+			});
+		});
+	});
+}
+```
+
+- [ ] **步骤 7：添加后台执行函数**
+
+```typescript
+async function runTaskInOffscreen(task: ScheduledTask): Promise<TaskExecutionResult> {
+	// 创建目标标签页
+	let tabId: number;
+	try {
+		const tab = await chrome.tabs.create({
+			url: task.targetUrl || "about:blank",
+			active: task.executionMode === "visible",
+		});
+		tabId = tab.id!;
 	} catch (error) {
 		return {
 			status: "failed",
-			error: `Failed to create offscreen document: ${error}`,
+			error: `Failed to create tab: ${error instanceof Error ? error.message : String(error)}`,
 			agentMessages: [],
 		};
 	}
 
-	return new Promise((resolve) => {
+	// 确保 Offscreen Document 存在
+	try {
+		const existingContexts = await chrome.runtime.getContexts({
+			contextTypes: ["OFFSCREEN_DOCUMENT"] as any,
+		});
+		if (existingContexts.length === 0) {
+			await chrome.offscreen.createDocument({
+				url: "offscreen.html",
+				reasons: ["WORKERS"] as any,
+				justification: "Scheduled task execution",
+			});
+			await new Promise((resolve) => setTimeout(resolve, 500));
+		}
+	} catch (error) {
+		try { await chrome.tabs.remove(tabId); } catch { /* already closed */ }
+		return {
+			status: "failed",
+			error: `Failed to create offscreen document: ${error instanceof Error ? error.message : String(error)}`,
+			agentMessages: [],
+		};
+	}
+
+	// 解析代理配置
+	const proxyData = await chrome.storage.local.get(["proxy_enabled", "proxy_url"]);
+	const resolvedProxyUrl = (proxyData.proxy_enabled as boolean) ? proxyData.proxy_url as string : undefined;
+
+	// 发送任务并等待结果
+	return new Promise<TaskExecutionResult>((resolve) => {
 		const timeout = setTimeout(() => {
 			chrome.runtime.onMessage.removeListener(listener);
-			resolve({
-				status: "timeout",
-				error: "Offscreen document did not respond within 10 minutes",
-				agentMessages: [],
-			});
+			cleanupTab();
+			resolve({ status: "timeout", error: "Task exceeded 10-minute timeout", agentMessages: [] });
 		}, 10 * 60 * 1000);
+
+		function cleanupTab(): void {
+			if (task.executionMode === "silent") {
+				chrome.tabs.remove(tabId).catch(() => {});
+			}
+		}
 
 		function listener(message: any) {
 			if (message.type === "task-result") {
 				clearTimeout(timeout);
 				chrome.runtime.onMessage.removeListener(listener);
-				resolve(message.result);
+				cleanupTab();
+				resolve(message.result as TaskExecutionResult);
 			}
 		}
 
 		chrome.runtime.onMessage.addListener(listener);
 
-		chrome.runtime.sendMessage({ type: "execute-task", task }).catch((err) => {
-			clearTimeout(timeout);
-			chrome.runtime.onMessage.removeListener(listener);
-			resolve({
-				status: "failed",
-				error: `Failed to send task to offscreen: ${err}`,
-				agentMessages: [],
+		chrome.runtime.sendMessage({ type: "execute-task", task, tabId, proxyUrl: resolvedProxyUrl })
+			.catch((err: unknown) => {
+				clearTimeout(timeout);
+				chrome.runtime.onMessage.removeListener(listener);
+				cleanupTab();
+				resolve({
+					status: "failed",
+					error: `Failed to send task to offscreen: ${err instanceof Error ? err.message : String(err)}`,
+					agentMessages: [],
+				});
 			});
-		});
 	});
 }
+```
 
-// IndexedDB direct access for background (bypasses Store abstraction)
-function openSchedulerDB(): Promise<IDBDatabase> {
-	return new Promise((resolve, reject) => {
-		const request = indexedDB.open("sitegeist-storage", 4);
-		request.onerror = () => reject(request.error);
-		request.onsuccess = () => resolve(request.result);
-		request.onupgradeneeded = () => {};
-	});
-}
+- [ ] **步骤 8：添加会话持久化函数**
 
-async function getTaskFromStorage(taskId: string): Promise<ScheduledTask | null> {
-	const db = await openSchedulerDB();
-	return new Promise((resolve) => {
-		const tx = db.transaction(SCHEDULE_STORE_NAME, "readonly");
-		const store = tx.objectStore(SCHEDULE_STORE_NAME);
-		const req = store.get(taskId);
-		req.onsuccess = () => resolve(req.result ?? null);
-		req.onerror = () => resolve(null);
-	});
-}
+`saveTaskSession` 将执行结果写入 sessions 和 sessions-metadata 表：
 
-async function saveTask(task: ScheduledTask): Promise<void> {
-	const db = await openSchedulerDB();
-	return new Promise((resolve, reject) => {
-		const tx = db.transaction(SCHEDULE_STORE_NAME, "readwrite");
-		const store = tx.objectStore(SCHEDULE_STORE_NAME);
-		store.put(task);
-		tx.oncomplete = () => resolve();
-		tx.onerror = () => reject(tx.error);
-	});
-}
+- 构建消息数组（确保 user 消息在前，追加 error 消息）
+- 生成会话标题：`{任务名} [{状态}] - {时间}`
+- 计算累计 usage（从 assistant 消息中提取）
+- 生成预览文本（前 2KB 的对话内容）
+- 写入 `sessions`（完整数据）和 `sessions-metadata`（元数据）两个表
+- 元数据包含 `source: "scheduled"` 和 `taskId` 用于历史过滤
 
-async function saveExecutionLog(log: TaskExecutionLog): Promise<void> {
-	const db = await openSchedulerDB();
-	return new Promise((resolve, reject) => {
-		const tx = db.transaction(EXECUTION_LOG_STORE_NAME, "readwrite");
-		const store = tx.objectStore(EXECUTION_LOG_STORE_NAME);
-		store.put(log);
-		tx.oncomplete = () => resolve();
-		tx.onerror = () => reject(tx.error);
-	});
-}
+- [ ] **步骤 9：添加 alarm 管理函数**
 
-async function updateCronAlarm(task: ScheduledTask, nextTime: Date): Promise<void> {
-	await chrome.alarms.create(alarmNameForTask(task.id), {
-		when: nextTime.getTime(),
-		periodInMinutes: 1440,
-	});
-}
-
-// Public API for sidepanel to create/update/delete alarms
+```typescript
 async function registerAlarmForTask(task: ScheduledTask): Promise<void> {
 	const name = alarmNameForTask(task.id);
 
 	switch (task.schedule.type) {
 		case "once": {
 			const when = new Date(task.schedule.at).getTime();
-			if (when <= Date.now()) {
-				console.warn("[Scheduler] Cannot create alarm for past time");
-				return;
-			}
+			if (when <= Date.now()) return; // 拒绝过去时间
 			await chrome.alarms.create(name, { when });
 			task.nextRunAt = task.schedule.at;
 			break;
@@ -1116,14 +935,12 @@ async function registerAlarmForTask(task: ScheduledTask): Promise<void> {
 		case "interval": {
 			await chrome.alarms.create(name, { periodInMinutes: Math.max(task.schedule.minutes, 1) });
 			const alarm = await chrome.alarms.get(name);
-			if (alarm?.scheduledTime) {
-				task.nextRunAt = new Date(alarm.scheduledTime).toISOString();
-			}
+			if (alarm?.scheduledTime) task.nextRunAt = new Date(alarm.scheduledTime).toISOString();
 			break;
 		}
 		case "cron": {
 			const nextTime = getNextCronTime(task.schedule.expression);
-			await chrome.alarms.create(name, { when: nextTime.getTime(), periodInMinutes: 1440 });
+			await chrome.alarms.create(name, { when: nextTime.getTime() });
 			task.nextRunAt = nextTime.toISOString();
 			break;
 		}
@@ -1135,913 +952,303 @@ async function registerAlarmForTask(task: ScheduledTask): Promise<void> {
 async function removeAlarmForTask(taskId: string): Promise<void> {
 	await chrome.alarms.clear(alarmNameForTask(taskId));
 }
+```
 
-// Recovery: restore alarms for all enabled tasks on Service Worker startup
+- [ ] **步骤 10：添加启动恢复逻辑**
+
+```typescript
 async function restoreAlarms(): Promise<void> {
 	try {
 		const db = await openSchedulerDB();
 		const tasks: ScheduledTask[] = await new Promise((resolve) => {
 			const tx = db.transaction(SCHEDULE_STORE_NAME, "readonly");
-			const store = tx.objectStore(SCHEDULE_STORE_NAME);
-			const req = store.getAll();
+			const req = tx.objectStore(SCHEDULE_STORE_NAME).getAll();
 			req.onsuccess = () => resolve(req.result || []);
 			req.onerror = () => resolve([]);
 		});
 
 		const enabledTasks = tasks.filter((t) => t.enabled);
-		console.log(`[Scheduler] Restoring alarms for ${enabledTasks.length} enabled tasks`);
-
 		for (const task of enabledTasks) {
-			const name = alarmNameForTask(task.id);
-			const existing = await chrome.alarms.get(name);
-			if (!existing) {
-				console.log(`[Scheduler] Restoring alarm for task: ${task.name}`);
-				await registerAlarmForTask(task);
-			}
-		}
-
-		// Mark stale running logs as failed
-		const runningLogs: TaskExecutionLog[] = await new Promise((resolve) => {
-			const tx = db.transaction(EXECUTION_LOG_STORE_NAME, "readonly");
-			const store = tx.objectStore(EXECUTION_LOG_STORE_NAME);
-			const req = store.getAll();
-			req.onsuccess = () => resolve(req.result || []);
-			req.onerror = () => resolve([]);
-		});
-
-		const cutoff = Date.now() - 15 * 60 * 1000;
-		for (const log of runningLogs) {
-			if (log.status === "running" && new Date(log.startedAt).getTime() < cutoff) {
-				log.status = "failed";
-				log.error = "Task interrupted (service worker restart)";
-				log.finishedAt = new Date().toISOString();
-				await saveExecutionLog(log);
-			}
+			const existing = await chrome.alarms.get(alarmNameForTask(task.id));
+			if (!existing) await registerAlarmForTask(task);
 		}
 	} catch (error) {
 		console.error("[Scheduler] Failed to restore alarms:", error);
 	}
 }
 
-restoreAlarms();
+restoreAlarms().catch((err) => console.error("[Scheduler] Unhandled restore error:", err));
 ```
 
-- [ ] **Step 2: Verify compilation**
+**关键设计点：**
+- `openSchedulerDB()` 直接打开 IndexedDB 连接，绕过 Store 抽象层，使 Service Worker 可独立运行
+- `onupgradeneeded` 创建所有 Store（包括 sessions、settings 等），确保与 Sidepanel 的 IndexedDB 版本一致（版本 5）
+- 使用 `chrome.power.requestKeepAwake("system")` 防止系统在长时间任务中休眠
 
-Run: `npx tsc --noEmit`
-Expected: No errors
+- [ ] **步骤 11：验证编译**
 
-- [ ] **Step 3: Commit**
-
-```bash
-git add src/background.ts
-git commit -m "feat: add background scheduler with alarm management and execution queue"
-```
+运行：`./check.sh`
+预期：所有检查通过
 
 ---
 
-### Task 10: i18n Keys
+### Task 10: SessionMetadata 类型扩展
 
-**Files:**
-- Modify: `src/utils/i18n-extension.ts`
+**文件：**
+- 修改：`src/web-ui/storage/types.ts`
 
-- [ ] **Step 1: Add i18n key declarations**
+- [ ] **步骤 1：添加 source 和 taskId 字段**
 
-In `src/utils/i18n-extension.ts`, add the following keys to the English `i18nMessages` interface declaration:
-
-```typescript
-// Scheduled Tasks
-"Scheduled Tasks": string;
-"No scheduled tasks yet": string;
-"Create a task to let the Agent complete web operations on schedule.": string;
-"New Task": string;
-"Edit Task": string;
-"Task Name": string;
-"Task Description": string;
-"Target URL (optional)": string;
-"Schedule Rule": string;
-"One-time": string;
-"Interval": string;
-"Cron": string;
-"Execution Time": string;
-"Every N minutes": string;
-"Minimum 1 minute": string;
-"Cron Expression": string;
-"min hour day month weekday": string;
-"Execution Mode": string;
-"Silent (background)": string;
-"Visible (open tab)": string;
-"Save": string;
-"Delete task \"{name}\"?": string;
-"Enable": string;
-"Disable": string;
-"Execution History": string;
-"View Details": string;
-"No execution history": string;
-"Last run": string;
-"Next run": string;
-"Enabled": string;
-"Disabled": string;
-"Success": string;
-"Failed": string;
-"Timeout": string;
-"Running": string;
-"Every day at 09:00": string;
-"Every hour": string;
-"Every Monday": string;
-"1st of each month": string;
-```
-
-And add Chinese translations in the `zh` object:
+在 `SessionMetadata` 接口中添加：
 
 ```typescript
-"Scheduled Tasks": "定时任务",
-"No scheduled tasks yet": "暂无定时任务",
-"Create a task to let the Agent complete web operations on schedule.": "创建一个任务，让 Agent 按时帮你完成网页操作。",
-"New Task": "新建任务",
-"Edit Task": "编辑任务",
-"Task Name": "任务名称",
-"Task Description": "任务描述",
-"Target URL (optional)": "目标网址（可选）",
-"Schedule Rule": "调度规则",
-"One-time": "一次性",
-"Interval": "定时循环",
-"Cron": "Cron",
-"Execution Time": "执行时间",
-"Every N minutes": "每 N 分钟",
-"Minimum 1 minute": "最小 1 分钟",
-"Cron Expression": "Cron 表达式",
-"min hour day month weekday": "分 时 日 月 星期",
-"Execution Mode": "执行模式",
-"Silent (background)": "静默（后台执行）",
-"Visible (open tab)": "可见（打开标签页）",
-"Delete task \"{name}\"?": "删除任务「{name}」？",
-"Enable": "启用",
-"Disable": "暂停",
-"Execution History": "执行历史",
-"View Details": "查看详情",
-"No execution history": "暂无执行历史",
-"Last run": "上次运行",
-"Next run": "下次运行",
-"Enabled": "已启用",
-"Disabled": "已暂停",
-"Success": "成功",
-"Failed": "失败",
-"Timeout": "超时",
-"Running": "运行中",
-"Every day at 09:00": "每天 09:00",
-"Every hour": "每小时",
-"Every Monday": "每周一",
-"1st of each month": "每月 1 号",
-```
-
-- [ ] **Step 2: Verify compilation**
-
-Run: `npx tsc --noEmit`
-Expected: No errors
-
-- [ ] **Step 3: Commit**
-
-```bash
-git add src/utils/i18n-extension.ts
-git commit -m "feat: add i18n keys for scheduled tasks UI"
-```
-
----
-
-### Task 11: ScheduledTasksTab UI
-
-**Files:**
-- Create: `src/dialogs/ScheduledTasksTab.ts`
-
-This is the main task list shown inside the Settings dialog as a tab.
-
-- [ ] **Step 1: Create ScheduledTasksTab**
-
-```typescript
-// src/dialogs/ScheduledTasksTab.ts
-
-import { i18n } from "@mariozechner/mini-lit";
-import { Button } from "@mariozechner/mini-lit/dist/Button.js";
-import { icon } from "@mariozechner/mini-lit/dist/icons.js";
-import { html, type TemplateResult } from "lit";
-import { state } from "lit/decorators.js";
-import { Clock, Pause, Play, Trash2, Plus, History } from "lucide";
-import { getSitegeistStorage } from "../storage/app-storage.js";
-import type { ScheduledTask } from "../scheduler/types.js";
-import { alarmNameForTask, taskIdFromAlarmName } from "../scheduler/types.js";
-import { SettingsTab } from "../web-ui/index.js";
-import { TaskEditorDialog } from "./TaskEditorDialog.js";
-import { ExecutionHistoryDialog } from "./ExecutionHistoryDialog.js";
-import { cronToHumanReadable } from "../scheduler/cron-parser.js";
-import "../utils/i18n-extension.js";
-
-export class ScheduledTasksTab extends SettingsTab {
-	@state() private tasks: ScheduledTask[] = [];
-
-	getTabName(): string {
-		return i18n("Scheduled Tasks");
-	}
-
-	override async connectedCallback() {
-		super.connectedCallback();
-		await this.loadTasks();
-	}
-
-	private async loadTasks(): Promise<void> {
-		const storage = getSitegeistStorage();
-		this.tasks = await storage.schedule.listAll();
-		this.tasks.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-	}
-
-	private async createTask(): Promise<void> {
-		await TaskEditorDialog.open(null, async (task) => {
-			const storage = getSitegeistStorage();
-			await storage.schedule.save(task);
-			await chrome.runtime.sendMessage({ type: "register-alarm", task });
-			await this.loadTasks();
-		});
-	}
-
-	private async editTask(task: ScheduledTask): Promise<void> {
-		await TaskEditorDialog.open(task, async (updated) => {
-			const storage = getSitegeistStorage();
-			await storage.schedule.save(updated);
-			await chrome.runtime.sendMessage({ type: "remove-alarm", taskId: task.id });
-			if (updated.enabled) {
-				await chrome.runtime.sendMessage({ type: "register-alarm", task: updated });
-			}
-			await this.loadTasks();
-		});
-	}
-
-	private async deleteTask(task: ScheduledTask): Promise<void> {
-		if (!confirm(i18n('Delete task "{name}"?').replace("{name}", task.name))) return;
-
-		const storage = getSitegeistStorage();
-		await storage.schedule.delete(task.id);
-		await chrome.runtime.sendMessage({ type: "remove-alarm", taskId: task.id });
-		await this.loadTasks();
-	}
-
-	private async toggleEnabled(task: ScheduledTask): Promise<void> {
-		const storage = getSitegeistStorage();
-		task.enabled = !task.enabled;
-		task.updatedAt = new Date().toISOString();
-		await storage.schedule.save(task);
-
-		if (task.enabled) {
-			await chrome.runtime.sendMessage({ type: "register-alarm", task });
-		} else {
-			await chrome.runtime.sendMessage({ type: "remove-alarm", taskId: task.id });
-		}
-
-		await this.loadTasks();
-	}
-
-	private openHistory(task: ScheduledTask): void {
-		ExecutionHistoryDialog.open(task);
-	}
-
-	private formatSchedule(task: ScheduledTask): string {
-		switch (task.schedule.type) {
-			case "once":
-				return new Date(task.schedule.at).toLocaleString();
-			case "interval":
-				return `Every ${task.schedule.minutes} min`;
-			case "cron":
-				return cronToHumanReadable(task.schedule.expression);
-		}
-	}
-
-	private statusBadge(task: ScheduledTask): TemplateResult {
-		if (!task.lastRunStatus) {
-			return html`<span class="text-xs text-muted-foreground">--</span>`;
-		}
-
-		const colorMap: Record<string, string> = {
-			success: "text-green-600",
-			failed: "text-red-600",
-			timeout: "text-orange-600",
-		};
-		const color = colorMap[task.lastRunStatus] || "text-muted-foreground";
-		return html`<span class="text-xs font-medium ${color}">${i18n(task.lastRunStatus.charAt(0).toUpperCase() + task.lastRunStatus.slice(1))}</span>`;
-	}
-
-	render(): TemplateResult {
-		return html`
-			<div class="flex flex-col gap-4">
-				<div class="flex items-center justify-between">
-					<p class="text-sm text-muted-foreground">
-						${this.tasks.length === 0
-							? i18n("No scheduled tasks yet")
-							: `${this.tasks.length} task(s)`}
-					</p>
-					${Button({
-						variant: "primary",
-						size: "sm",
-						children: html`${icon(Plus, "sm")} ${i18n("New Task")}`,
-						onClick: () => this.createTask(),
-					})}
-				</div>
-
-				${this.tasks.length === 0
-					? html`
-						<div class="text-center py-12 text-muted-foreground">
-							${icon(Clock, "lg")}
-							<p class="mt-3 text-sm">${i18n("Create a task to let the Agent complete web operations on schedule.")}</p>
-						</div>
-					`
-					: this.tasks.map((task) => html`
-						<div class="border border-border rounded-lg p-4 bg-card">
-							<div class="flex items-start justify-between gap-3">
-								<div class="flex-1 min-w-0">
-									<div class="flex items-center gap-2">
-										<span class="w-2 h-2 rounded-full flex-shrink-0 ${task.enabled ? "bg-green-500" : "bg-gray-400"}"></span>
-										<h3 class="font-medium text-foreground truncate">${task.name}</h3>
-									</div>
-									<div class="mt-1 text-xs text-muted-foreground">
-										${this.formatSchedule(task)}
-										${task.lastRunAt ? html` · ${i18n("Last run")}: ${this.statusBadge(task)}` : ""}
-									</div>
-									${task.nextRunAt && task.enabled
-										? html`<div class="text-xs text-muted-foreground mt-0.5">${i18n("Next run")}: ${new Date(task.nextRunAt).toLocaleString()}</div>`
-										: ""}
-								</div>
-								<div class="flex items-center gap-1 flex-shrink-0">
-									${Button({
-										variant: "ghost",
-										size: "sm",
-										children: icon(History, "sm"),
-										onClick: () => this.openHistory(task),
-										title: i18n("Execution History"),
-									})}
-									${Button({
-										variant: "ghost",
-										size: "sm",
-										children: icon(task.enabled ? Pause : Play, "sm"),
-										onClick: () => this.toggleEnabled(task),
-										title: task.enabled ? i18n("Disable") : i18n("Enable"),
-									})}
-									${Button({
-										variant: "ghost",
-										size: "sm",
-										children: icon(Trash2, "sm"),
-										onClick: () => this.deleteTask(task),
-										title: "Delete",
-									})}
-								</div>
-							</div>
-						</div>
-					`)}
-			</div>
-		`;
-	}
+interface SessionMetadata {
+  // ... 现有字段 ...
+  /** 会话来源（定时任务为 "scheduled"） */
+  source?: string;
+  /** 关联的定时任务 ID */
+  taskId?: string;
 }
-
-customElements.define("scheduled-tasks-tab", ScheduledTasksTab);
 ```
 
-- [ ] **Step 2: Verify compilation**
-
-Run: `npx tsc --noEmit`
-Expected: No errors
-
-- [ ] **Step 3: Commit**
-
-```bash
-git add src/dialogs/ScheduledTasksTab.ts
-git commit -m "feat: add ScheduledTasksTab for task list UI"
-```
+同步更新 `SessionData`（sessions 表中的完整会话数据）添加相同字段。
 
 ---
 
-### Task 12: TaskEditorDialog UI
+### Task 11: i18n 国际化
 
-**Files:**
-- Create: `src/dialogs/TaskEditorDialog.ts`
+**文件：**
+- 修改：`src/utils/i18n-extension.ts`
 
-- [ ] **Step 1: Create TaskEditorDialog**
+- [ ] **步骤 1：添加定时任务 UI 的翻译键**
+
+在 `i18nMessages` 接口和对应的语言实现（英语、德语、中文）中添加以下键：
+
+核心翻译键：
+- `"Scheduled Tasks"` — 标签页名称
+- `"New Task"` / `"Edit Task"` — 编辑器标题
+- `"No scheduled tasks yet"` — 空状态
+- `"Create a scheduled task to automate web operations"` — 空状态描述
+- `"Save Task"` / `"Cancel"` / `"Delete"` / `"Edit"` — 按钮
+- `"Enable"` / `"Disable"` — 启用/禁用切换
+- `"Execution History"` — 历史视图标题
+- `"Success"` / `"Failed"` / `"Timeout"` / `"Running"` — 状态标签
+- `"Last run"` / `"Next run"` — 状态信息标签
+- `"Model"` / `"Select"` / `"Reset"` / `"Default (last used)"` — 模型选择
+- `"Silent"` / `"Visible"` — 执行模式
+- `"Once"` / `"Interval"` / `"Cron"` — 调度类型
+- `"Cron Expression:"` — Cron 输入标签
+- `"Prompt Template"` — 高级选项
+- `"Show Advanced"` / `"Hide Advanced"` — 高级选项切换
+- `"Reset to description"` — 提示词重置
+- `"Open Session"` / `"Duration"` / `"Total runs"` / `"Loading..."` — 历史视图
+
+---
+
+### Task 12: ScheduledTasksTab（任务列表标签页）
+
+**文件：**
+- 创建：`src/dialogs/ScheduledTasksTab.ts`
+
+- [ ] **步骤 1：创建 SettingsTab 子类**
+
+继承 `SettingsTab`，功能包括：
+
+- **数据加载**：`connectedCallback` 中从 `getSitegeistStorage().schedule.listAll()` 加载任务
+- **创建任务**：打开 `TaskEditorDialog.open(null, onSave)`，保存后通过 `chrome.runtime.sendMessage({ type: "register-alarm", task })` 注册 alarm
+- **编辑任务**：打开 `TaskEditorDialog.open(task, onSave)`，保存时先移除旧 alarm 再注册新 alarm
+- **删除任务**：确认后删除 IndexedDB 记录并移除 alarm
+- **启用/禁用切换**：更新 `enabled` 状态并注册/移除 alarm
+- **查看历史**：打开 `ScheduledTaskHistoryDialog.open(task)`
+- **列表展示**：每项显示名称、调度规则（通过 `cronToHumanReadable` 格式化）、启用状态指示器、上次运行状态、下次运行时间、使用的模型
+- **操作按钮**：编辑（Pencil）、历史（History）、启用/禁用（Play/Pause）、删除（Trash2）
+- **空状态**：Clock 图标 + 提示文本
+
+- [ ] **步骤 2：验证编译**
+
+运行：`npx tsc --noEmit`
+预期：无错误
+
+---
+
+### Task 13: TaskEditorDialog（任务编辑器）
+
+**文件：**
+- 创建：`src/dialogs/TaskEditorDialog.ts`
+
+- [ ] **步骤 1：创建 DialogBase 子类**
+
+继承 `DialogBase`，模态尺寸 `min(600px, 90vw)` x `min(700px, 85vh)`，包含以下表单字段：
+
+- **任务名称**（`Input` 组件）
+- **任务描述**（`textarea`，多行文本）
+- **目标 URL**（`Input` 组件，可选）
+- **调度类型切换**（三个 radio 按钮）：
+  - `once`：日期时间输入（`datetime-local`）
+  - `interval`：分钟数输入（`number`，min=1），含最小值提示
+  - `cron`：预设按钮（`CRON_PRESETS`：每天 9:00、每小时、每周一 9:00、每月 1 号 9:00）+ 表达式输入框
+- **模型选择**：通过 `ModelSelector.open()` 打开模型选择器，显示已选模型名称或"Default (last used)"，支持"Reset"重置
+- **执行模式**：radio 按钮（Silent / Visible），附说明文本
+- **高级选项**：可展开区域
+  - `promptTemplate` 文本区域（默认等于 description）
+  - "Reset to description" 按钮
+- **操作按钮**：Cancel（关闭）+ Save Task（保存，名称和描述不能为空）
+
+**关键实现点：**
 
 ```typescript
-// src/dialogs/TaskEditorDialog.ts
-
-import { DialogBase } from "@mariozechner/mini-lit/dist/DialogBase.js";
-import { Button } from "@mariozechner/mini-lit/dist/Button.js";
-import { Input } from "@mariozechner/mini-lit/dist/Input.js";
-import { Label } from "@mariozechner/mini-lit/dist/Label.js";
-import i18n from "@mariozechner/mini-lit/dist/i18n.js";
-import { html, type TemplateResult } from "lit";
-import { state } from "lit/decorators.js";
-import type { ScheduledTask, ScheduleConfig } from "../scheduler/types.js";
-import "../utils/i18n-extension.js";
-
-type TaskSaveCallback = (task: ScheduledTask) => Promise<void>;
-
-const CRON_PRESETS: { label: string; expression: string }[] = [
-	{ label: "Every day at 09:00", expression: "0 9 * * *" },
-	{ label: "Every hour", expression: "0 * * * *" },
-	{ label: "Every Monday at 09:00", expression: "0 9 * * 1" },
-	{ label: "1st of each month at 09:00", expression: "0 9 1 * *" },
+// CRON 预设
+const CRON_PRESETS = [
+  { label: "Every day at 9:00", expression: "0 9 * * *" },
+  { label: "Every hour", expression: "0 * * * *" },
+  { label: "Every Monday at 9:00", expression: "0 9 * * 1" },
+  { label: "Every 1st of month at 9:00", expression: "0 9 1 * *" },
 ];
 
-export class TaskEditorDialog extends DialogBase {
-	protected modalWidth = "min(600px, 90vw)";
-	protected modalHeight = "auto";
+// 保存逻辑
+private async handleSave(): Promise<void> {
+  const finalPrompt = this.showAdvanced && this.promptTemplate.trim()
+    ? this.promptTemplate.trim()
+    : this.description.trim();
 
-	@state() private name = "";
-	@state() private description = "";
-	@state() private targetUrl = "";
-	@state() private scheduleType: "once" | "interval" | "cron" = "once";
-	@state() private onceAt = "";
-	@state() private intervalMinutes = 60;
-	@state() private cronExpression = "0 9 * * *";
-	@state() private executionMode: "silent" | "visible" = "silent";
-	@state() private showAdvanced = false;
-	@state() private promptTemplate = "";
+  const task: ScheduledTask = {
+    id: this.existingTask?.id || crypto.randomUUID(),
+    // ... 其他字段 ...
+    promptTemplate: finalPrompt,
+    model: this.selectedModel ?? undefined,
+  };
 
-	private existingTask: ScheduledTask | null = null;
-	private saveCallback: TaskSaveCallback | null = null;
-
-	static async open(task: ScheduledTask | null, onSave: TaskSaveCallback): Promise<void> {
-		const dialog = new TaskEditorDialog();
-		dialog.existingTask = task;
-		dialog.saveCallback = onSave;
-
-		if (task) {
-			dialog.name = task.name;
-			dialog.description = task.description;
-			dialog.targetUrl = task.targetUrl || "";
-			dialog.scheduleType = task.schedule.type;
-			dialog.executionMode = task.executionMode;
-			dialog.promptTemplate = task.promptTemplate !== task.description ? task.promptTemplate : "";
-
-			switch (task.schedule.type) {
-				case "once":
-					dialog.onceAt = task.schedule.at;
-					break;
-				case "interval":
-					dialog.intervalMinutes = task.schedule.minutes;
-					break;
-				case "cron":
-					dialog.cronExpression = task.schedule.expression;
-					break;
-			}
-		} else {
-			const now = new Date();
-			now.setHours(now.getHours() + 1, 0, 0, 0);
-			dialog.onceAt = now.toISOString().slice(0, 16);
-		}
-
-		document.body.appendChild(dialog);
-		dialog.open();
-		dialog.requestUpdate();
-	}
-
-	private buildSchedule(): ScheduleConfig {
-		switch (this.scheduleType) {
-			case "once":
-				return { type: "once", at: new Date(this.onceAt).toISOString() };
-			case "interval":
-				return { type: "interval", minutes: this.intervalMinutes };
-			case "cron":
-				return { type: "cron", expression: this.cronExpression };
-		}
-	}
-
-	private async handleSave(): Promise<void> {
-		if (!this.name.trim() || !this.description.trim()) return;
-
-		const now = new Date().toISOString();
-		const finalPrompt = this.showAdvanced && this.promptTemplate.trim()
-			? this.promptTemplate.trim()
-			: this.description.trim();
-
-		const task: ScheduledTask = {
-			id: this.existingTask?.id || crypto.randomUUID(),
-			name: this.name.trim(),
-			description: this.description.trim(),
-			promptTemplate: finalPrompt,
-			schedule: this.buildSchedule(),
-			executionMode: this.executionMode,
-			targetUrl: this.targetUrl.trim() || undefined,
-			enabled: this.existingTask?.enabled ?? true,
-			lastRunAt: this.existingTask?.lastRunAt,
-			lastRunStatus: this.existingTask?.lastRunStatus,
-			nextRunAt: this.existingTask?.nextRunAt,
-			createdAt: this.existingTask?.createdAt || now,
-			updatedAt: now,
-		};
-
-		if (this.saveCallback) {
-			await this.saveCallback(task);
-		}
-		this.close();
-	}
-
-	protected override renderContent(): TemplateResult {
-		return html`
-			<div class="flex flex-col h-full overflow-hidden">
-				<div class="p-6 flex-shrink-0 border-b border-border">
-					<h2 class="text-lg font-semibold text-foreground">
-						${this.existingTask ? i18n("Edit Task") : i18n("New Task")}
-					</h2>
-				</div>
-
-				<div class="flex-1 overflow-y-auto p-6 space-y-5">
-					<div>
-						${Label({ children: i18n("Task Name") })}
-						${Input({
-							value: this.name,
-							placeholder: "Daily article publish",
-							onInput: (e: Event) => { this.name = (e.target as HTMLInputElement).value; },
-						})}
-					</div>
-
-					<div>
-						${Label({ children: i18n("Task Description") })}
-						<textarea
-							class="w-full min-h-[100px] rounded-md border border-border bg-background px-3 py-2 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-ring"
-							.value=${this.description}
-							@input=${(e: Event) => { this.description = (e.target as HTMLTextAreaElement).value; }}
-							placeholder="Open example.com, fill the article editor with today's content, and click Publish..."
-						></textarea>
-					</div>
-
-					<div>
-						${Label({ children: i18n("Target URL (optional)") })}
-						${Input({
-							value: this.targetUrl,
-							placeholder: "https://example.com/editor",
-							onInput: (e: Event) => { this.targetUrl = (e.target as HTMLInputElement).value; },
-						})}
-					</div>
-
-					<div>
-						${Label({ children: i18n("Schedule Rule") })}
-						<div class="flex gap-4 mt-2">
-							<label class="flex items-center gap-2 cursor-pointer">
-								<input type="radio" name="schedule" .checked=${this.scheduleType === "once"}
-									@change=${() => { this.scheduleType = "once"; }}
-									class="accent-primary" />
-								<span class="text-sm">${i18n("One-time")}</span>
-							</label>
-							<label class="flex items-center gap-2 cursor-pointer">
-								<input type="radio" name="schedule" .checked=${this.scheduleType === "interval"}
-									@change=${() => { this.scheduleType = "interval"; }}
-									class="accent-primary" />
-								<span class="text-sm">${i18n("Interval")}</span>
-							</label>
-							<label class="flex items-center gap-2 cursor-pointer">
-								<input type="radio" name="schedule" .checked=${this.scheduleType === "cron"}
-									@change=${() => { this.scheduleType = "cron"; }}
-									class="accent-primary" />
-								<span class="text-sm">${i18n("Cron")}</span>
-							</label>
-						</div>
-
-						<div class="mt-3">
-							${this.scheduleType === "once" ? html`
-								${Label({ children: i18n("Execution Time") })}
-								<input type="datetime-local"
-									class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-									.value=${this.onceAt}
-									@input=${(e: Event) => { this.onceAt = (e.target as HTMLInputElement).value; }} />
-							` : ""}
-
-							${this.scheduleType === "interval" ? html`
-								${Label({ children: i18n("Every N minutes") })}
-								${Input({
-									type: "number",
-									value: String(this.intervalMinutes),
-									onInput: (e: Event) => {
-										this.intervalMinutes = Math.max(1, parseInt((e.target as HTMLInputElement).value) || 1);
-									},
-								})}
-								<p class="text-xs text-muted-foreground mt-1">${i18n("Minimum 1 minute")}</p>
-							` : ""}
-
-							${this.scheduleType === "cron" ? html`
-								<div class="space-y-2">
-									<div class="flex flex-wrap gap-2">
-										${CRON_PRESETS.map((preset) => html`
-											<button
-												class="text-xs px-2 py-1 rounded border border-border hover:bg-muted transition-colors"
-												@click=${() => { this.cronExpression = preset.expression; }}>
-												${preset.label}
-											</button>
-										`)}
-									</div>
-									${Label({ children: i18n("Cron Expression") })}
-									${Input({
-										value: this.cronExpression,
-										placeholder: "0 9 * * 1",
-										onInput: (e: Event) => { this.cronExpression = (e.target as HTMLInputElement).value; },
-									})}
-									<p class="text-xs text-muted-foreground">${i18n("min hour day month weekday")}</p>
-								</div>
-							` : ""}
-						</div>
-					</div>
-
-					<div>
-						${Label({ children: i18n("Execution Mode") })}
-						<div class="flex gap-4 mt-2">
-							<label class="flex items-center gap-2 cursor-pointer">
-								<input type="radio" name="mode" .checked=${this.executionMode === "silent"}
-									@change=${() => { this.executionMode = "silent"; }}
-									class="accent-primary" />
-								<span class="text-sm">${i18n("Silent (background)")}</span>
-							</label>
-							<label class="flex items-center gap-2 cursor-pointer">
-								<input type="radio" name="mode" .checked=${this.executionMode === "visible"}
-									@change=${() => { this.executionMode = "visible"; }}
-									class="accent-primary" />
-								<span class="text-sm">${i18n("Visible (open tab)")}</span>
-							</label>
-						</div>
-					</div>
-
-					<div>
-						<button
-							class="text-xs text-primary hover:underline"
-							@click=${() => { this.showAdvanced = !this.showAdvanced; }}>
-							${this.showAdvanced ? "Hide Advanced" : "Show Advanced"}
-						</button>
-						${this.showAdvanced ? html`
-							<div class="mt-2">
-								${Label({ children: "Prompt Template" })}
-								<textarea
-									class="w-full min-h-[80px] rounded-md border border-border bg-background px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-ring"
-									.value=${this.promptTemplate || this.description}
-									@input=${(e: Event) => { this.promptTemplate = (e.target as HTMLTextAreaElement).value; }}
-								></textarea>
-								${this.promptTemplate ? html`
-									<button
-										class="text-xs text-muted-foreground hover:text-foreground mt-1"
-										@click=${() => { this.promptTemplate = ""; }}>
-										Reset to description
-									</button>
-								` : ""}
-							</div>
-						` : ""}
-					</div>
-				</div>
-
-				<div class="p-6 flex-shrink-0 border-t border-border flex justify-end gap-3">
-					${Button({
-						variant: "outline",
-						children: i18n("Cancel"),
-						onClick: () => this.close(),
-					})}
-					${Button({
-						variant: "primary",
-						children: i18n("Save"),
-						onClick: () => this.handleSave(),
-						disabled: !this.name.trim() || !this.description.trim(),
-					})}
-				</div>
-			</div>
-		`;
-	}
+  if (this.saveCallback) await this.saveCallback(task);
+  this.close();
 }
-
-customElements.define("task-editor-dialog", TaskEditorDialog);
 ```
 
-- [ ] **Step 2: Verify compilation**
+- [ ] **步骤 2：验证编译**
 
-Run: `npx tsc --noEmit`
-Expected: No errors
-
-- [ ] **Step 3: Commit**
-
-```bash
-git add src/dialogs/TaskEditorDialog.ts
-git commit -m "feat: add TaskEditorDialog for creating and editing scheduled tasks"
-```
+运行：`npx tsc --noEmit`
+预期：无错误
 
 ---
 
-### Task 13: ExecutionHistoryDialog UI
+### Task 14: ScheduledTaskHistoryDialog（执行历史对话框）
 
-**Files:**
-- Create: `src/dialogs/ExecutionHistoryDialog.ts`
+**文件：**
+- 创建：`src/dialogs/ScheduledTaskHistoryDialog.ts`
 
-- [ ] **Step 1: Create ExecutionHistoryDialog**
+- [ ] **步骤 1：创建 DialogBase 子类**
+
+继承 `DialogBase`，基于 sessions 系统（非独立存储），功能包括：
+
+- **数据加载**：从 `getAppStorage().sessions.getAllMetadata()` 获取所有会话元数据，过滤 `source === "scheduled"` 且 `taskId` 匹配的记录
+- **旧数据兼容**：对无 `taskId` 字段的旧会话，通过标题中包含任务名进行匹配
+- **排序**：按 `lastModified` 降序
+- **统计信息**：总执行次数、各状态（从标题中 `[status]` 标签提取）的计数
+- **记录列表**：每条显示执行时间、状态标签（彩色）、执行时长（从 `createdAt` 到 `lastModified` 计算）
+- **导航**：点击记录或 ExternalLink 按钮跳转到 `?session=${sessionId}` 查看完整对话
+- **加载状态**：显示 "Loading..." 占位
+
+**关键实现点：**
 
 ```typescript
-// src/dialogs/ExecutionHistoryDialog.ts
-
-import { DialogBase } from "@mariozechner/mini-lit/dist/DialogBase.js";
-import i18n from "@mariozechner/mini-lit/dist/i18n.js";
-import { html, type TemplateResult } from "lit";
-import { state } from "lit/decorators.js";
-import { getSitegeistStorage } from "../storage/app-storage.js";
-import type { ScheduledTask, TaskExecutionLog } from "../scheduler/types.js";
-import "../utils/i18n-extension.js";
-
-export class ExecutionHistoryDialog extends DialogBase {
-	protected modalWidth = "min(700px, 90vw)";
-	protected modalHeight = "80vh";
-
-	@state() private logs: TaskExecutionLog[] = [];
-	@state() private expandedLogId: string | null = null;
-
-	private task: ScheduledTask | null = null;
-
-	static open(task: ScheduledTask): void {
-		const dialog = new ExecutionHistoryDialog();
-		dialog.task = task;
-		document.body.appendChild(dialog);
-		dialog.open();
-		dialog.loadLogs();
-	}
-
-	private async loadLogs(): Promise<void> {
-		if (!this.task) return;
-		const storage = getSitegeistStorage();
-		this.logs = await storage.executionLogs.listByTask(this.task.id);
-		this.requestUpdate();
-	}
-
-	private toggleExpand(logId: string): void {
-		this.expandedLogId = this.expandedLogId === logId ? null : logId;
-	}
-
-	private formatDuration(startedAt: string, finishedAt?: string): string {
-		if (!finishedAt) return "--";
-		const ms = new Date(finishedAt).getTime() - new Date(startedAt).getTime();
-		const seconds = Math.floor(ms / 1000);
-		const minutes = Math.floor(seconds / 60);
-		const secs = seconds % 60;
-		return `${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
-	}
-
-	private statusColor(status: string): string {
-		switch (status) {
-			case "success": return "text-green-600";
-			case "failed": return "text-red-600";
-			case "timeout": return "text-orange-600";
-			case "running": return "text-blue-600";
-			default: return "text-muted-foreground";
-		}
-	}
-
-	protected override renderContent(): TemplateResult {
-		const taskName = this.task?.name || "";
-
-		return html`
-			<div class="flex flex-col h-full overflow-hidden">
-				<div class="p-6 flex-shrink-0 border-b border-border">
-					<h2 class="text-lg font-semibold text-foreground">
-						${i18n("Execution History")} - ${taskName}
-					</h2>
-				</div>
-
-				<div class="flex-1 overflow-y-auto p-6">
-					${this.logs.length === 0
-						? html`<p class="text-center text-muted-foreground py-12">${i18n("No execution history")}</p>`
-						: this.logs.map((log) => html`
-							<div class="border border-border rounded-lg mb-3 bg-card">
-								<div class="flex items-center justify-between p-4 cursor-pointer hover:bg-muted/50 transition-colors"
-									@click=${() => this.toggleExpand(log.id)}>
-									<div class="flex items-center gap-3">
-										<span class="text-sm text-muted-foreground">
-											${new Date(log.startedAt).toLocaleString()}
-										</span>
-										<span class="text-sm font-medium ${this.statusColor(log.status)}">
-											${i18n(log.status.charAt(0).toUpperCase() + log.status.slice(1))}
-										</span>
-									</div>
-									<span class="text-xs text-muted-foreground">
-										${this.formatDuration(log.startedAt, log.finishedAt)}
-									</span>
-								</div>
-
-								${this.expandedLogId === log.id ? html`
-									<div class="px-4 pb-4 border-t border-border pt-3 space-y-3">
-										${log.error ? html`
-											<div>
-												<div class="text-xs font-medium text-red-600 mb-1">Error</div>
-												<p class="text-sm text-muted-foreground">${log.error}</p>
-											</div>
-										` : ""}
-
-										${log.summary ? html`
-											<div>
-												<div class="text-xs font-medium text-muted-foreground mb-1">Summary</div>
-												<p class="text-sm">${log.summary}</p>
-											</div>
-										` : ""}
-
-										${log.agentMessages.length > 0 ? html`
-											<div>
-												<div class="text-xs font-medium text-muted-foreground mb-1">Agent Messages (${log.agentMessages.length})</div>
-												<div class="max-h-[200px] overflow-y-auto rounded border border-border p-2 bg-background">
-													${log.agentMessages.map((msg) => html`
-														<div class="text-xs font-mono mb-1 ${msg.role === "assistant" ? "text-blue-600" : "text-muted-foreground"}">
-															[${msg.role}] ${typeof (msg as any).content === "string"
-																? (msg as any).content.slice(0, 200)
-																: JSON.stringify((msg as any).content).slice(0, 200)}
-														</div>
-													`)}
-												</div>
-											</div>
-										` : ""}
-									</div>
-								` : ""}
-							</div>
-						`)}
-				</div>
-			</div>
-		`;
-	}
+// 从会话标题提取状态
+private extractStatusFromTitle(title: string): string {
+  if (title.includes("[success]")) return "success";
+  if (title.includes("[failed]")) return "failed";
+  if (title.includes("[timeout]")) return "timeout";
+  if (title.includes("[running]")) return "running";
+  return "unknown";
 }
 
-customElements.define("execution-history-dialog", ExecutionHistoryDialog);
+// 过滤逻辑
+this.sessions = allMetadata.filter((s) => {
+  if (s.source !== "scheduled") return false;
+  if (s.taskId === this.task!.id) return true;
+  // 旧数据回退：通过标题匹配
+  if (!s.taskId && s.title.includes(this.task!.name)) return true;
+  return false;
+});
 ```
 
-- [ ] **Step 2: Verify compilation**
+- [ ] **步骤 2：验证编译**
 
-Run: `npx tsc --noEmit`
-Expected: No errors
-
-- [ ] **Step 3: Commit**
-
-```bash
-git add src/dialogs/ExecutionHistoryDialog.ts
-git commit -m "feat: add ExecutionHistoryDialog for viewing task run history"
-```
+运行：`npx tsc --noEmit`
+预期：无错误
 
 ---
 
-### Task 14: Wire UI into Sidepanel
+### Task 15: Sidepanel 集成
 
-**Files:**
-- Modify: `src/sidepanel.ts`
+**文件：**
+- 修改：`src/sidepanel.ts`
 
-- [ ] **Step 1: Add ScheduledTasksTab to Settings dialog**
-
-In `src/sidepanel.ts`, add the import near the other dialog imports:
+- [ ] **步骤 1：导入 ScheduledTasksTab 并添加到设置面板**
 
 ```typescript
 import { ScheduledTasksTab } from "./dialogs/ScheduledTasksTab.js";
 ```
 
-Then in both places where `SettingsDialog.open([...])` is called (around line 187 and line 743), add `new ScheduledTasksTab()` to the tabs array:
+在所有 `SettingsDialog.open([...])` 调用中添加 `new ScheduledTasksTab()` 到 tabs 数组。
+
+- [ ] **步骤 2：添加前台任务执行处理**
+
+在 `chrome.runtime.onMessage` 中处理 `execute-scheduled-task` 消息：
+- 导航到 `?session=${sessionId}&scheduledTask=${taskId}` URL
+- 加载任务元数据，构建系统提示词
+- 创建 Agent 实例并运行
+- 完成后发送 `scheduled-task-complete` 消息
+
+- [ ] **步骤 3：添加会话加载时的定时任务自动运行**
+
+在会话初始化逻辑中，检测 URL 参数 `scheduledTask`：
+- 若会话存在且 Agent 已就绪，自动调用 `runScheduledTask()`
+- 若会话不存在，创建新会话后自动运行
+
+- [ ] **步骤 4：在会话元数据保存时附加定时任务信息**
 
 ```typescript
-SettingsDialog.open([
-    new ProvidersModelsTab(),
-    new ApiKeysOAuthTab(),
-    new CostsTab(),
-    new SkillsTab(),
-    new ScheduledTasksTab(),
-    new ProxyTab(),
-    new AboutTab(),
-]),
+// 在保存会话元数据时
+metadata.source = "scheduled";
+metadata.taskId = scheduledTaskId;
 ```
 
-- [ ] **Step 2: Run check.sh**
+- [ ] **步骤 5：运行 check.sh**
 
-Run: `./check.sh`
-Expected: All checks pass (formatting, linting, type checking)
-
-- [ ] **Step 3: Commit**
-
-```bash
-git add src/sidepanel.ts
-git commit -m "feat: add ScheduledTasksTab to settings dialog"
-```
+运行：`./check.sh`
+预期：所有检查通过
 
 ---
 
-### Task 15: CHANGELOG and Final Verification
+### Task 16: CHANGELOG 和最终验证
 
-**Files:**
-- Modify: `CHANGELOG.md`
+**文件：**
+- 修改：`CHANGELOG.md`
 
-- [ ] **Step 1: Update CHANGELOG.md**
+- [ ] **步骤 1：更新 CHANGELOG.md**
 
-Add the following under `## [Unreleased]` > `### Added`:
+在 `## [Unreleased]` > `### Added` 下添加：
 
 ```markdown
-- Scheduled tasks: create, edit, and manage timed Agent operations via Settings > Scheduled Tasks
-- Support for one-time, interval, and cron-based scheduling
-- Silent (background) and visible execution modes
-- Execution history with full Agent conversation logs
-- Chrome notifications on task completion, failure, or timeout
+- 定时任务：通过设置 > 定时任务创建、编辑和管理定时 Agent 操作
+- 支持一次性、周期性和 cron 三种调度模式
+- 前台执行（Sidepanel 流式 UI）和后台执行（Offscreen Document）双模式
+- 执行历史复用会话系统，支持查看完整 Agent 对话记录
+- Chrome 通知：任务完成、失败或超时时发送通知
+- 每个任务可指定独立的 AI 模型
+- Service Worker 重启后自动恢复 alarm 注册
 ```
 
-- [ ] **Step 2: Run full check**
+- [ ] **步骤 2：完整检查**
 
-Run: `./check.sh`
-Expected: All checks pass
+运行：`./check.sh`
+预期：所有检查通过
 
-- [ ] **Step 3: Commit**
+- [ ] **步骤 3：验证功能**
 
-```bash
-git add CHANGELOG.md
-git commit -m "docs: add scheduled tasks changelog entry"
-```
+手动测试流程：
+1. 打开设置面板 > 定时任务标签页
+2. 创建一个一次性任务（设定 1 分钟后执行）
+3. 确认任务在列表中显示正确
+4. 等待任务执行，确认收到通知
+5. 点击通知或打开执行历史，确认可以查看完整 Agent 对话
+6. 测试启用/禁用切换
+7. 测试删除任务

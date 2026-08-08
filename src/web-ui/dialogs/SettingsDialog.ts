@@ -1,4 +1,4 @@
-import { getProviders } from "@earendil-works/pi-ai/compat";
+import { getBuiltinProviders } from "@earendil-works/pi-ai/providers/all";
 import { i18n } from "@mariozechner/mini-lit";
 import { Dialog, DialogContent, DialogHeader } from "@mariozechner/mini-lit/dist/Dialog.js";
 import { Input } from "@mariozechner/mini-lit/dist/Input.js";
@@ -26,7 +26,7 @@ export class ApiKeysTab extends SettingsTab {
 	}
 
 	render(): TemplateResult {
-		const providers = getProviders();
+		const providers = getBuiltinProviders();
 
 		return html`
 			<div class="flex flex-col gap-6">

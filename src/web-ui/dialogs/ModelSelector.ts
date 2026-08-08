@@ -1,4 +1,5 @@
-import { getModels, getProviders, type Model, modelsAreEqual } from "@earendil-works/pi-ai/compat";
+import { type Model, modelsAreEqual } from "@earendil-works/pi-ai";
+import { getBuiltinModels, getBuiltinProviders } from "@earendil-works/pi-ai/providers/all";
 import { icon } from "@mariozechner/mini-lit";
 import { Badge } from "@mariozechner/mini-lit/dist/Badge.js";
 import { Button } from "@mariozechner/mini-lit/dist/Button.js";
@@ -209,10 +210,10 @@ export class ModelSelector extends DialogBase {
 		const allModels: Array<{ provider: string; id: string; model: any }> = [];
 
 		try {
-			const knownProviders = getProviders();
+			const knownProviders = getBuiltinProviders();
 			for (const provider of knownProviders) {
 				try {
-					const models = getModels(provider as any);
+					const models = getBuiltinModels(provider as any);
 					for (const model of models) {
 						allModels.push({ provider, id: model.id, model });
 					}

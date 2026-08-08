@@ -1,6 +1,6 @@
 import "@mariozechner/mini-lit/dist/MarkdownBlock.js";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { AssistantMessage } from "@earendil-works/pi-ai/compat";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { DialogBase } from "@mariozechner/mini-lit/dist/DialogBase.js";
 import { icon } from "@mariozechner/mini-lit/dist/icons.js";
 import { Chart, type ChartConfiguration, registerables } from "chart.js";

@@ -1,4 +1,5 @@
-import { type Context, complete, getModel } from "@earendil-works/pi-ai/compat";
+import type { Context } from "@earendil-works/pi-ai";
+import { getBuiltinModel } from "@earendil-works/pi-ai/providers/all";
 import { i18n } from "@mariozechner/mini-lit";
 import { Badge } from "@mariozechner/mini-lit/dist/Badge.js";
 import { Button } from "@mariozechner/mini-lit/dist/Button.js";
@@ -6,6 +7,7 @@ import { html, LitElement } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { getAppStorage } from "../storage/app-storage.js";
 import { applyProxyIfNeeded } from "../utils/proxy-utils.js";
+import { complete } from "../utils/stream.js";
 import { Input } from "./Input.js";
 
 // Test models for each provider
@@ -54,7 +56,7 @@ export class ProviderKeyInput extends LitElement {
 			// Returning true here for Ollama and friends. Can' know which model to use for testing
 			if (!modelId) return true;
 
-			let model = getModel(provider as any, modelId);
+			let model = getBuiltinModel(provider as any, modelId);
 			if (!model) return false;
 
 			// Get proxy URL from settings (if available)

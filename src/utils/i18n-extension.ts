@@ -174,6 +174,9 @@ declare module "@mariozechner/mini-lit" {
 		"Never run": string;
 		"Execution History": string;
 		"No execution history": string;
+		"Total runs": string;
+		Duration: string;
+		"Open Session": string;
 		"Task created": string;
 		"Task updated": string;
 		"Task deleted": string;
@@ -382,6 +385,9 @@ const sitegeistTranslations = {
 		"Never run": "Never run",
 		"Execution History": "Execution History",
 		"No execution history": "No execution history",
+		"Total runs": "Total runs",
+		Duration: "Duration",
+		"Open Session": "Open Session",
 		"Task created": "Task created",
 		"Task updated": "Task updated",
 		"Task deleted": "Task deleted",
@@ -591,6 +597,9 @@ const sitegeistTranslations = {
 		"Never run": "Never run",
 		"Execution History": "Execution History",
 		"No execution history": "No execution history",
+		"Total runs": "Total runs",
+		Duration: "Duration",
+		"Open Session": "Open Session",
 		"Task created": "Task created",
 		"Task updated": "Task updated",
 		"Task deleted": "Task deleted",
@@ -782,6 +791,9 @@ const sitegeistTranslations = {
 		"Never run": "从未运行",
 		"Execution History": "执行历史",
 		"No execution history": "暂无执行历史",
+		"Total runs": "总执行次数",
+		Duration: "执行时长",
+		"Open Session": "打开会话",
 		"Task created": "任务已创建",
 		"Task updated": "任务已更新",
 		"Task deleted": "任务已删除",
