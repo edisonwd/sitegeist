@@ -99,7 +99,7 @@ export class TaskEditorDialog extends DialogBase {
 	}
 
 	private async handleSave(): Promise<void> {
-		if (!this.name.trim() || !this.description.trim()) return;
+		if (!this.name.trim() || !this.description.trim() || !this.selectedModel) return;
 
 		const now = new Date().toISOString();
 		const finalPrompt =
@@ -112,7 +112,7 @@ export class TaskEditorDialog extends DialogBase {
 			promptTemplate: finalPrompt,
 			schedule: this.buildSchedule(),
 			executionMode: this.executionMode,
-			model: this.selectedModel ?? undefined,
+			model: this.selectedModel as Model<any>,
 			targetUrl: this.targetUrl.trim() || undefined,
 			enabled: this.existingTask?.enabled ?? true,
 			lastRunAt: this.existingTask?.lastRunAt,
@@ -129,7 +129,7 @@ export class TaskEditorDialog extends DialogBase {
 	}
 
 	private modelLabel(): string {
-		if (!this.selectedModel) return i18n("Default (last used)");
+		if (!this.selectedModel) return i18n("Select a model");
 		return this.selectedModel.name || this.selectedModel.id;
 	}
 
@@ -144,7 +144,7 @@ export class TaskEditorDialog extends DialogBase {
 
 				<div class="flex-1 overflow-y-auto p-6 space-y-5">
 					<div>
-						${Label({ children: i18n("Task Name") })}
+						${Label({ children: i18n("Task Name"), required: true })}
 						${Input({
 							value: this.name,
 							placeholder: "Daily article publish",
@@ -155,7 +155,7 @@ export class TaskEditorDialog extends DialogBase {
 					</div>
 
 					<div>
-						${Label({ children: i18n("Description") })}
+						${Label({ children: i18n("Description"), required: true })}
 						<textarea
 							class="w-full min-h-[100px] rounded-md border border-border bg-background px-3 py-2 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-ring"
 							.value=${this.description}
@@ -276,7 +276,7 @@ export class TaskEditorDialog extends DialogBase {
 					</div>
 
 					<div>
-						${Label({ children: i18n("Model") })}
+						${Label({ children: i18n("Model"), required: true })}
 						<div class="flex items-center gap-3 mt-2">
 							<button
 								class="flex-1 flex items-center justify-between rounded-md border border-border bg-background px-3 py-2 text-sm hover:bg-muted transition-colors focus:outline-none focus:ring-2 focus:ring-ring"
@@ -286,28 +286,14 @@ export class TaskEditorDialog extends DialogBase {
 								</span>
 								<span class="text-xs text-primary ml-2 flex-shrink-0">${i18n("Select")}</span>
 							</button>
-							${
-								this.selectedModel
-									? html`
-								<button
-									class="text-xs text-muted-foreground hover:text-foreground flex-shrink-0"
-									@click=${() => {
-										this.selectedModel = null;
-									}}
-									title=${i18n("Reset to default")}>
-									${i18n("Reset")}
-								</button>
-							`
-									: ""
-							}
 						</div>
 						<p class="text-xs text-muted-foreground mt-1">
-							${i18n("Choose which AI model to use for this task. Default uses the last selected model.")}
+							${i18n("Choose which AI model to use for this task. Required.")}
 						</p>
 					</div>
 
 					<div>
-						${Label({ children: i18n("Execution Mode") })}
+						${Label({ children: html`<span title="${i18n("Silent: runs in background, auto-closes tab. Visible: opens in foreground, keeps tab for review.")}">${i18n("Execution Mode")} ⓘ</span>` })}
 						<div class="flex gap-4 mt-2">
 							<label class="flex items-center gap-2 cursor-pointer">
 								<input type="radio" name="mode" .checked=${this.executionMode === "silent"}
@@ -386,7 +372,7 @@ export class TaskEditorDialog extends DialogBase {
 						variant: "default",
 						children: i18n("Save Task"),
 						onClick: () => this.handleSave(),
-						disabled: !this.name.trim() || !this.description.trim(),
+						disabled: !this.name.trim() || !this.description.trim() || !this.selectedModel,
 					})}
 				</div>
 			</div>

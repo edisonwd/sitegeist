@@ -152,6 +152,7 @@ declare module "@mariozechner/mini-lit" {
 		Visible: string;
 		"Silent mode runs the task in a background tab": string;
 		"Visible mode runs the task in a foreground tab": string;
+		"Silent: runs in background, auto-closes tab. Visible: opens in foreground, keeps tab for review.": string;
 		"At:": string;
 		"Every (minutes):": string;
 		"Cron Expression:": string;
@@ -202,11 +203,11 @@ declare module "@mariozechner/mini-lit" {
 		"Task will repeat at the specified interval": string;
 		"Task will follow the cron schedule": string;
 		Model: string;
-		"Default (last used)": string;
+		"Select a model": string;
 		Select: string;
 		Reset: string;
 		"Reset to default": string;
-		"Choose which AI model to use for this task. Default uses the last selected model.": string;
+		"Choose which AI model to use for this task. Required.": string;
 	}
 }
 
@@ -361,6 +362,8 @@ const sitegeistTranslations = {
 		Silent: "Silent",
 		Visible: "Visible",
 		"Silent mode runs the task in a background tab": "Silent mode runs the task in a background tab",
+		"Silent: runs in background, auto-closes tab. Visible: opens in foreground, keeps tab for review.":
+			"Silent: runs in background, auto-closes tab. Visible: opens in foreground, keeps tab for review.",
 		"Visible mode runs the task in a foreground tab": "Visible mode runs the task in a foreground tab",
 		"At:": "At:",
 		"Every (minutes):": "Every (minutes):",
@@ -414,12 +417,11 @@ const sitegeistTranslations = {
 		"Task will repeat at the specified interval": "Task will repeat at the specified interval",
 		"Task will follow the cron schedule": "Task will follow the cron schedule",
 		Model: "Model",
-		"Default (last used)": "Default (last used)",
+		"Select a model": "Select a model",
 		Select: "Select",
 		Reset: "Reset",
 		"Reset to default": "Reset to default",
-		"Choose which AI model to use for this task. Default uses the last selected model.":
-			"Choose which AI model to use for this task. Default uses the last selected model.",
+		"Choose which AI model to use for this task. Required.": "Choose which AI model to use for this task. Required.",
 	},
 	de: {
 		"Permission request failed": "Berechtigungsanfrage fehlgeschlagen",
@@ -573,6 +575,8 @@ const sitegeistTranslations = {
 		Silent: "Silent",
 		Visible: "Visible",
 		"Silent mode runs the task in a background tab": "Silent mode runs the task in a background tab",
+		"Silent: runs in background, auto-closes tab. Visible: opens in foreground, keeps tab for review.":
+			"Silent: runs in background, auto-closes tab. Visible: opens in foreground, keeps tab for review.",
 		"Visible mode runs the task in a foreground tab": "Visible mode runs the task in a foreground tab",
 		"At:": "At:",
 		"Every (minutes):": "Every (minutes):",
@@ -768,6 +772,8 @@ const sitegeistTranslations = {
 		Silent: "静默",
 		Visible: "可见",
 		"Silent mode runs the task in a background tab": "静默模式在后台标签页中运行任务",
+		"Silent: runs in background, auto-closes tab. Visible: opens in foreground, keeps tab for review.":
+			"静默：后台运行，自动关闭标签页。可见：前台运行，保留标签页查看结果。",
 		"Visible mode runs the task in a foreground tab": "可见模式在前台标签页中运行任务",
 		"At:": "时间：",
 		"Every (minutes):": "每（分钟）：",
@@ -819,12 +825,11 @@ const sitegeistTranslations = {
 		"Task will repeat at the specified interval": "任务将按指定间隔重复执行",
 		"Task will follow the cron schedule": "任务将按照 Cron 计划执行",
 		Model: "模型",
-		"Default (last used)": "默认（上次使用）",
+		"Select a model": "选择模型",
 		Select: "选择",
 		Reset: "重置",
 		"Reset to default": "重置为默认",
-		"Choose which AI model to use for this task. Default uses the last selected model.":
-			"选择此任务使用的 AI 模型。默认使用上次选择的模型。",
+		"Choose which AI model to use for this task. Required.": "选择此任务使用的 AI 模型（必填）。",
 	},
 };
 
