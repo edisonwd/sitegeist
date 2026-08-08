@@ -35,6 +35,55 @@ sitegeist 的通用任务调度系统，允许用户调度任意 Agent 网页操
 - **Service Worker 独立访问 IndexedDB**：background.ts 直接打开 IndexedDB 连接（绕过 Store 抽象层），使其可独立于 Sidepanel 运行
 - **Service Worker 重启恢复**：启动时从 IndexedDB 读取所有启用任务并恢复 alarm 注册
 
+
+### Offscreen 执行架构（v2 - 消息传递）
+
+当 Sidepanel 未打开时，定时任务在 Offscreen Document 中执行。由于 Offscreen Document 无法直接访问 Chrome 浏览器 API（`chrome.tabs`、`chrome.scripting` 等），采用消息传递架构：
+
+```
+Offscreen Document                    Background (Service Worker)
++-------------------+                +---------------------------+
+| OffscreenNavigateTool |            | chrome.runtime.onMessage  |
+| OffscreenBrowserJsTool|            | listener                  |
+|                   |                |                           |
+| sendMessage() ----+--------------->| 处理消息类型:              |
+|                   |                | - offscreen-get-tab       |
+| await response <--+<---------------| - offscreen-update-tab    |
++-------------------+                | - offscreen-create-tab    |
+                                     | - offscreen-query-tabs    |
+                                     | - offscreen-focus-window  |
+                                     | - offscreen-execute-script|
+                                     +---------------------------+
+```
+
+**关键设计：**
+
+1. **工具实现**：`src/offscreen/offscreen-tools.ts` 实现 `OffscreenNavigateTool` 和 `OffscreenBrowserJsTool`
+   - 这些工具通过 `chrome.runtime.sendMessage` 向 Service Worker 发送请求
+   - 等待 Service Worker 响应后返回结果
+
+2. **消息处理器**：`src/background.ts` 添加 6 种消息类型的处理器
+   - `offscreen-get-tab`：获取标签页信息
+   - `offscreen-update-tab`：更新标签页（导航）
+   - `offscreen-create-tab`：创建新标签页
+   - `offscreen-query-tabs`：查询所有标签页
+   - `offscreen-focus-window`：聚焦窗口
+   - `offscreen-execute-script`：执行 JavaScript 代码
+
+3. **就绪信号机制**：Offscreen Document 加载后发送 `offscreen-ready` 消息
+   - Service Worker 等待此消息后再发送 `execute-task` 任务
+   - 避免消息端口在 Offscreen 未就绪时关闭
+
+4. **系统提示词**：使用 `OFFSCREEN_SYSTEM_PROMPT`，只描述可用的两个工具（navigate、browserjs）
+   - 不使用完整的 `SYSTEM_PROMPT`（包含 sidepanel 特有功能）
+
+**为什么不能直接使用 Chrome API：**
+
+- `chrome.tabs` 的 `get`、`update`、`create`、`query` 方法在 Offscreen Document 中**不可用**
+- `chrome.scripting.executeScript` 在 Offscreen Document 中**不可用**
+- 这些 API 只能在 Service Worker 和扩展页面（popup、options、sidepanel）中使用
+- Offscreen Document 只能访问有限的 API：`chrome.runtime`、`chrome.storage`、`chrome.offscreen`
+
 ## 数据模型
 
 ### ScheduledTask（任务元数据，存储在 IndexedDB `scheduled_tasks` 表）

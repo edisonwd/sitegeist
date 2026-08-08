@@ -18,6 +18,7 @@
 - Removed standalone execution log store (execution-log-store.ts) in favor of session-based history
 
 ### Fixed
+- Scheduled task execution with closed sidepanel: offscreen document now properly communicates with background service worker to execute browser automation tools (navigate, browserjs)
 
 - Scheduled task history dialog showing 0 results: session metadata now includes source and taskId fields
 - Offscreen document errors by resolving chrome.storage access in the background service worker
