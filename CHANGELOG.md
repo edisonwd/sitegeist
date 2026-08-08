@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.0.9] - 2026-08-08
+
 ### Added
 
 - Scheduled tasks: create, edit, and manage timed Agent operations via Settings > Scheduled Tasks
