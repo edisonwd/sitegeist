@@ -37,7 +37,11 @@
 		"userScripts",
 		"webNavigation",
 		"debugger",
-		"declarativeNetRequest"
+		"declarativeNetRequest",
+		"alarms",
+		"offscreen",
+		"notifications",
+		"power"
 	],
 	"host_permissions": [
 		"http://*/*",

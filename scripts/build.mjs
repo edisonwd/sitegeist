@@ -18,6 +18,7 @@ const isDev = process.env.NODE_ENV === "development" || isWatch;
 const entryPoints = {
 	sidepanel: join(packageRoot, "src/sidepanel.ts"),
 	background: join(packageRoot, "src/background.ts"),
+	offscreen: join(packageRoot, "src/offscreen/offscreen.ts"),
 	...(isDev
 		? {
 				debug: join(packageRoot, "src/debug.ts"),
