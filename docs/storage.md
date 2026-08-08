@@ -323,7 +323,7 @@ const storage = getAppStorage();
 const sessionData: SessionData = {
   id: crypto.randomUUID(),
   title: 'My Session',
-  model: getModel('anthropic', 'claude-sonnet-4'),
+  model: getBuiltinModel('anthropic', 'claude-sonnet-4'),
   thinkingLevel: 'off',
   messages: [...],
   createdAt: new Date().toISOString(),

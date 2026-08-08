@@ -748,7 +748,14 @@ async function resolveApiKeyForOffscreen(provider: string): Promise<string | und
 	// Read from IndexedDB provider-keys store (same as sidepanel's ProviderKeysStore)
 	const stored = await getProviderKeyFromDB(provider);
 	if (!stored) {
-		console.log("[Scheduler] No key in IndexedDB for provider:", provider);
+		// Fall back to custom providers (same logic as sidepanel's getApiKey)
+		const customProviders = await getCustomProvidersFromDB();
+		const customProvider = customProviders.find((p) => p.name === provider);
+		if (customProvider) {
+			console.log("[Scheduler] API key found in custom provider:", provider);
+			return customProvider.apiKey || "no-key-required";
+		}
+		console.log("[Scheduler] No key in IndexedDB or custom providers for provider:", provider);
 		return undefined;
 	}
 
@@ -776,6 +783,17 @@ async function getProviderKeyFromDB(provider: string): Promise<string | null> {
 		const req = store.get(provider);
 		req.onsuccess = () => resolve(req.result ?? null);
 		req.onerror = () => resolve(null);
+	});
+}
+
+async function getCustomProvidersFromDB(): Promise<{ id: string; name: string; apiKey?: string }[]> {
+	const db = await openSchedulerDB();
+	return new Promise((resolve) => {
+		const tx = db.transaction("custom-providers", "readonly");
+		const store = tx.objectStore("custom-providers");
+		const req = store.getAll();
+		req.onsuccess = () => resolve(req.result || []);
+		req.onerror = () => resolve([]);
 	});
 }
 

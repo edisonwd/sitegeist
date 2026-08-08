@@ -43,7 +43,7 @@
 // src/scheduler/types.ts
 
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { Model } from "@earendil-works/pi-ai/compat";
+import type { Model } from "@earendil-works/pi-ai";
 
 export type ScheduleConfig =
 	| { type: "once"; at: string }
@@ -489,7 +489,7 @@ offscreen: join(packageRoot, "src/offscreen/offscreen.ts"),
 // src/offscreen/offscreen.ts
 
 import { Agent, type AgentEvent, type AgentMessage } from "@earendil-works/pi-agent-core";
-import { getModel } from "@earendil-works/pi-ai/compat";
+import { getBuiltinModel } from "@earendil-works/pi-ai/providers/all";
 import { browserMessageTransformer } from "../messages/message-transformer.js";
 import { SYSTEM_PROMPT } from "../prompts/prompts.js";
 import type { ScheduledTask, TaskExecutionResult } from "../scheduler/types.js";
@@ -529,7 +529,7 @@ async function executeTask(task: ScheduledTask, _tabId: number, proxyUrl?: strin
 	const agentMessages: AgentMessage[] = [];
 
 	try {
-		const model = task.model ?? getModel("anthropic" as any, "claude-sonnet-4-6" as any);
+		const model = task.model ?? getBuiltinModel("anthropic" as any, "claude-sonnet-4-6" as any);
 
 		const agent = new Agent({
 			initialState: {

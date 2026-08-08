@@ -127,7 +127,7 @@ const modelId = await storage.settings.get<string>("lastUsedModel.modelId");
 // Use with validation
 if (provider && modelId) {
   try {
-    const model = getModel(provider as any, modelId);
+    const model = getBuiltinModel(provider as any, modelId);
     // Use model
   } catch (error) {
     // Handle invalid model (provider/model no longer exists)
@@ -192,7 +192,7 @@ const modelId = await storage.settings.get<string>("lastUsedModel.modelId");
 if (modelId) {
   try {
     // Validate the model still exists
-    const model = getModel(provider as any, modelId);
+    const model = getBuiltinModel(provider as any, modelId);
     agent.setModel(model);
   } catch (error) {
     // Model no longer exists, fall back to default
