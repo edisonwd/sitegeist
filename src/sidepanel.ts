@@ -2,7 +2,7 @@ import { icon } from "@mariozechner/mini-lit";
 import { Button } from "@mariozechner/mini-lit/dist/Button.js";
 import { Input } from "@mariozechner/mini-lit/dist/Input.js";
 import "@mariozechner/mini-lit/dist/ThemeToggle.js";
-import "@mariozechner/mini-lit/dist/LanguageSelector.js";
+import "./components/LanguageSelector.js";
 import {
 	Agent,
 	type AgentEvent,
@@ -710,7 +710,7 @@ const renderApp = () => {
 				</div>
 				<div class="flex items-center gap-1 px-2">
 					${agent ? html`<span class="text-[10px] text-muted-foreground truncate max-w-[120px]" title="${agent.state.model.provider}/${agent.state.model.id}${authLabel ? ` (${authLabel})` : ""}">${agent.state.model.provider}${authLabel ? html` <span class="text-[9px] opacity-70">${authLabel}</span>` : ""}</span>` : ""}
-					<language-selector></language-selector>
+					<sitegeist-language-selector></sitegeist-language-selector>
 					<theme-toggle></theme-toggle>
 					${Button({
 						variant: "ghost",
