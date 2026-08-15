@@ -75,19 +75,22 @@ export class SessionCostDialog extends DialogBase {
 			const timeDelta = lastTimestamp ? (assistantMsg.timestamp - lastTimestamp) / 1000 : undefined;
 			lastTimestamp = assistantMsg.timestamp;
 
+			const usage = assistantMsg.usage ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+			const cost = usage.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
+
 			entries.push({
 				messageIndex,
 				timestamp: assistantMsg.timestamp,
 				timeDelta,
-				inputTokens: assistantMsg.usage.input,
-				outputTokens: assistantMsg.usage.output,
-				cacheReadTokens: assistantMsg.usage.cacheRead,
-				cacheWriteTokens: assistantMsg.usage.cacheWrite,
-				inputCost: assistantMsg.usage.cost.input,
-				outputCost: assistantMsg.usage.cost.output,
-				cacheReadCost: assistantMsg.usage.cost.cacheRead,
-				cacheWriteCost: assistantMsg.usage.cost.cacheWrite,
-				totalCost: assistantMsg.usage.cost.total,
+				inputTokens: usage.input,
+				outputTokens: usage.output,
+				cacheReadTokens: usage.cacheRead,
+				cacheWriteTokens: usage.cacheWrite,
+				inputCost: cost.input,
+				outputCost: cost.output,
+				cacheReadCost: cost.cacheRead,
+				cacheWriteCost: cost.cacheWrite,
+				totalCost: cost.total,
 				stopReason: assistantMsg.stopReason,
 				errorMessage: assistantMsg.errorMessage,
 				provider: assistantMsg.provider,

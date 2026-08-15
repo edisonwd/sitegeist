@@ -326,11 +326,11 @@ export class AgentInterface extends LitElement {
 				(acc, msg: any) => {
 					const usage = msg.usage;
 					if (usage) {
-						acc.input += usage.input;
-						acc.output += usage.output;
-						acc.cacheRead += usage.cacheRead;
-						acc.cacheWrite += usage.cacheWrite;
-						acc.cost.total += usage.cost.total;
+						acc.input += usage.input || 0;
+						acc.output += usage.output || 0;
+						acc.cacheRead += usage.cacheRead || 0;
+						acc.cacheWrite += usage.cacheWrite || 0;
+						acc.cost.total += usage.cost?.total || 0;
 					}
 					return acc;
 				},

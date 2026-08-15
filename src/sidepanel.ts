@@ -345,7 +345,22 @@ const createAgent = async (initialState?: Partial<AgentState>, shouldSave = true
 	if (!initialState?.model) {
 		const savedModel = await storage.settings.get<Model<any>>("lastUsedModel");
 		if (savedModel) {
-			defaultModel = savedModel;
+			// Check if this is a custom provider model and get latest version with cost rates
+			const customProviders = await storage.customProviders.getAll();
+			const customProvider = customProviders.find((p) => p.name === savedModel.provider);
+			if (customProvider?.models) {
+				const latestModel = customProvider.models.find((m) => m.id === savedModel.id);
+				if (latestModel) {
+					defaultModel = {
+						...latestModel,
+						provider: customProvider.name,
+					};
+				} else {
+					defaultModel = savedModel;
+				}
+			} else {
+				defaultModel = savedModel;
+			}
 		} else {
 			// Try to find a default model for a provider the user already has a key for
 			const providersWithKeys = await getProvidersWithKeys();
