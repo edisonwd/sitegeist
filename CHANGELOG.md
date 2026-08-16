@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- Scheduled task execution no longer fails with "Receiving end does not exist" when the sidepanel is closed. The background service worker now performs a fresh availability check using `chrome.runtime.getContexts` instead of relying on a potentially stale cache, and gracefully falls back to offscreen execution when `sendMessage` fails.
+
 - Custom provider models now correctly calculate and display conversation cost. When the API does not return token usage data (e.g. Ollama, vLLM, local servers), output tokens are estimated from response content and cost is computed using the model's configured per-1M-token rates. When the API does return usage data, cost is now explicitly recalculated to ensure custom provider cost rates are always applied. Fixed an issue where the last used model loaded from storage did not include updated cost rates - now fetches the latest model definition from custom providers.
 
 ## [1.0.9] - 2026-08-08

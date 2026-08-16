@@ -725,8 +725,18 @@ async function handleForegroundTaskComplete(
 async function runTaskInForeground(task: ScheduledTask, sessionId: string): Promise<TaskExecutionResult | null> {
 	console.log("[Scheduler] Attempting foreground execution for task:", task.name);
 
-	// Check if any sidepanel is open
-	if (openSidepanels.size === 0) {
+	// Fresh check: verify a sidepanel is actually open right now
+	// (openSidepanels cache can be stale after service worker restart)
+	let hasOpenSidepanel = false;
+	try {
+		const contexts = await chrome.runtime.getContexts({ contextTypes: ["SIDE_PANEL" as any] });
+		hasOpenSidepanel = contexts.length > 0;
+	} catch {
+		// getContexts may not be available in older Chrome versions
+		hasOpenSidepanel = openSidepanels.size > 0;
+	}
+
+	if (!hasOpenSidepanel) {
 		console.log("[Scheduler] No sidepanel open, cannot run in foreground");
 		return null;
 	}
@@ -786,14 +796,14 @@ async function runTaskInForeground(task: ScheduledTask, sessionId: string): Prom
 				tabId,
 			})
 			.catch((err: unknown) => {
-				console.error("[Scheduler] Failed to send task to sidepanel:", err);
+				console.warn(
+					"[Scheduler] Sidepanel unavailable during send, falling back to offscreen:",
+					err instanceof Error ? err.message : String(err),
+				);
 				clearTimeout(timeout);
 				pendingForegroundTask = null;
-				resolve({
-					status: "failed",
-					error: `Failed to send task to sidepanel: ${err instanceof Error ? err.message : String(err)}`,
-					agentMessages: [],
-				});
+				// Return null to trigger offscreen fallback in executeTaskById
+				resolve(null);
 			});
 	});
 }
