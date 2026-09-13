@@ -6,8 +6,10 @@ import type {
 	ToolResultMessage as ToolResultMessageType,
 	UserMessage as UserMessageType,
 } from "@earendil-works/pi-ai";
+import { icon } from "@mariozechner/mini-lit";
 import { html, LitElement, type TemplateResult } from "lit";
-import { customElement, property } from "lit/decorators.js";
+import { customElement, property, state } from "lit/decorators.js";
+import { Check, Copy } from "lucide";
 import { renderTool } from "../tools/index.js";
 import type { Attachment } from "../utils/attachment-utils.js";
 import { formatUsage } from "../utils/format.js";
@@ -92,6 +94,8 @@ export class AssistantMessage extends LitElement {
 	@property({ type: Boolean }) hidePendingToolCalls = false;
 	@property({ attribute: false }) onCostClick?: () => void;
 
+	@state() private copied = false;
+
 	protected override createRenderRoot(): HTMLElement | DocumentFragment {
 		return this;
 	}
@@ -99,6 +103,42 @@ export class AssistantMessage extends LitElement {
 	override connectedCallback(): void {
 		super.connectedCallback();
 		this.style.display = "block";
+	}
+
+	private getTextContent(): string {
+		const parts: string[] = [];
+		for (const chunk of this.message.content) {
+			if (chunk.type === "text" && chunk.text.trim() !== "") {
+				parts.push(chunk.text);
+			}
+		}
+		return parts.join("\n\n");
+	}
+
+	private async handleCopy() {
+		const text = this.getTextContent();
+		if (!text) return;
+		try {
+			await navigator.clipboard.writeText(text);
+			this.copied = true;
+			setTimeout(() => {
+				this.copied = false;
+			}, 2000);
+		} catch {
+			// Fallback for older browsers
+			const textarea = document.createElement("textarea");
+			textarea.value = text;
+			textarea.style.position = "fixed";
+			textarea.style.opacity = "0";
+			document.body.appendChild(textarea);
+			textarea.select();
+			document.execCommand("copy");
+			document.body.removeChild(textarea);
+			this.copied = true;
+			setTimeout(() => {
+				this.copied = false;
+			}, 2000);
+		}
 	}
 
 	override render() {
@@ -138,9 +178,26 @@ export class AssistantMessage extends LitElement {
 			}
 		}
 
+		const hasTextContent = this.message.content.some((c) => c.type === "text" && c.text.trim() !== "");
+
 		return html`
 			<div>
 				${orderedParts.length ? html` <div class="px-4 flex flex-col gap-3">${orderedParts}</div> ` : ""}
+				${
+					!this.isStreaming && hasTextContent
+						? html`
+							<div class="px-4 mt-1 flex justify-end">
+								<button
+									class="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors"
+									title=${this.copied ? i18n("Copied!") : i18n("Copy")}
+									@click=${this.handleCopy}
+								>
+									${this.copied ? icon(Check, "xs") : icon(Copy, "xs")}
+								</button>
+							</div>
+						`
+						: ""
+				}
 				${
 					this.message.usage && !this.isStreaming
 						? this.onCostClick
