@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Copy button on assistant messages to copy model response content to clipboard
+
 ### Fixed
 
 - Scheduled task execution no longer fails with "Receiving end does not exist" when the sidepanel is closed. The background service worker now performs a fresh availability check using `chrome.runtime.getContexts` instead of relying on a potentially stale cache, and gracefully falls back to offscreen execution when `sendMessage` fails.
