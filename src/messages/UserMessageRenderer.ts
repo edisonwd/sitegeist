@@ -1,7 +1,10 @@
+import { icon } from "@mariozechner/mini-lit";
 import { html, LitElement } from "lit";
-import { customElement, property } from "lit/decorators.js";
+import { customElement, property, state } from "lit/decorators.js";
+import { Check, Copy } from "lucide";
 import type { Attachment, MessageRenderer } from "../web-ui/index.js";
 import { registerMessageRenderer, type UserMessageWithAttachments } from "../web-ui/index.js";
+import { i18n } from "../web-ui/utils/i18n.js";
 
 /**
  * Custom user message component for Sitegeist with fancy pill styling.
@@ -20,12 +23,42 @@ export class SitegeistUserMessage extends LitElement {
 		this.style.display = "block";
 	}
 
+	@state() private copied = false;
+
+	private getTextContent(): string {
+		return typeof this.message.content === "string"
+			? this.message.content
+			: (this.message.content.find((c) => c.type === "text") as { type: "text"; text: string } | undefined)?.text ||
+					"";
+	}
+
+	private async handleCopy() {
+		const text = this.getTextContent();
+		if (!text) return;
+		try {
+			await navigator.clipboard.writeText(text);
+			this.copied = true;
+			setTimeout(() => {
+				this.copied = false;
+			}, 2000);
+		} catch {
+			const textarea = document.createElement("textarea");
+			textarea.value = text;
+			textarea.style.position = "fixed";
+			textarea.style.opacity = "0";
+			document.body.appendChild(textarea);
+			textarea.select();
+			document.execCommand("copy");
+			document.body.removeChild(textarea);
+			this.copied = true;
+			setTimeout(() => {
+				this.copied = false;
+			}, 2000);
+		}
+	}
+
 	override render() {
-		const content =
-			typeof this.message.content === "string"
-				? this.message.content
-				: (this.message.content.find((c) => c.type === "text") as { type: "text"; text: string } | undefined)
-						?.text || "";
+		const content = this.getTextContent();
 
 		return html`
 			<div class="flex justify-start ml-4">
@@ -39,6 +72,21 @@ export class SitegeistUserMessage extends LitElement {
 										(attachment: Attachment) =>
 											html` <attachment-tile .attachment=${attachment}></attachment-tile> `,
 									)}
+								</div>
+							`
+							: ""
+					}
+					${
+						content
+							? html`
+								<div class="mt-1 flex justify-end">
+									<button
+										class="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors"
+										title=${this.copied ? i18n("Copied!") : i18n("Copy")}
+										@click=${this.handleCopy}
+									>
+										${this.copied ? icon(Check, "xs") : icon(Copy, "xs")}
+									</button>
 								</div>
 							`
 							: ""
