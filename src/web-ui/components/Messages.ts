@@ -54,11 +54,41 @@ export class UserMessage extends LitElement {
 		this.style.display = "block";
 	}
 
+	@state() private copied = false;
+
+	private getTextContent(): string {
+		return typeof this.message.content === "string"
+			? this.message.content
+			: this.message.content.find((c) => c.type === "text")?.text || "";
+	}
+
+	private async handleCopy() {
+		const text = this.getTextContent();
+		if (!text) return;
+		try {
+			await navigator.clipboard.writeText(text);
+			this.copied = true;
+			setTimeout(() => {
+				this.copied = false;
+			}, 2000);
+		} catch {
+			const textarea = document.createElement("textarea");
+			textarea.value = text;
+			textarea.style.position = "fixed";
+			textarea.style.opacity = "0";
+			document.body.appendChild(textarea);
+			textarea.select();
+			document.execCommand("copy");
+			document.body.removeChild(textarea);
+			this.copied = true;
+			setTimeout(() => {
+				this.copied = false;
+			}, 2000);
+		}
+	}
+
 	override render() {
-		const content =
-			typeof this.message.content === "string"
-				? this.message.content
-				: this.message.content.find((c) => c.type === "text")?.text || "";
+		const content = this.getTextContent();
 
 		return html`
 			<div class="flex justify-start mx-4">
@@ -73,6 +103,21 @@ export class UserMessage extends LitElement {
 									${this.message.attachments.map(
 										(attachment) => html` <attachment-tile .attachment=${attachment}></attachment-tile> `,
 									)}
+								</div>
+							`
+							: ""
+					}
+					${
+						content
+							? html`
+								<div class="mt-1 flex justify-end">
+									<button
+										class="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors"
+										title=${this.copied ? i18n("Copied!") : i18n("Copy")}
+										@click=${this.handleCopy}
+									>
+										${this.copied ? icon(Check, "xs") : icon(Copy, "xs")}
+									</button>
 								</div>
 							`
 							: ""
