@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-10-11
+
 ### Added
 
 - Copy button on user messages to copy user input content to clipboard
